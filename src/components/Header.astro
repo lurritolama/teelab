@@ -1,0 +1,30 @@
+---
+const links = [
+  { label: 'Shop', href: '/shop' },
+  { label: 'Konfigurator', href: '/konfigurator' },
+  { label: 'Marker', href: '/marker' },
+  { label: 'Über uns', href: '/ueber-uns' },
+];
+---
+<nav>
+  <a class="logo" href="/" aria-label="TeeLab Startseite">
+    <svg width="30" height="42" viewBox="0 0 60 84" aria-hidden="true">
+      <defs>
+        <filter id="logo-glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="1.6" result="b" />
+          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      <g filter="url(#logo-glow)" stroke="#45f08a" stroke-width="3.4" stroke-linejoin="round" fill="rgba(69,240,138,.09)">
+        <path d="M12 16 Q30 30 48 16 L52 28 Q30 40 8 28 Z" />
+        <path d="M23 30 L23 64 L37 64 L37 30" />
+        <path d="M23 64 L30 80 L37 64 Z" />
+      </g>
+    </svg>
+    <span class="wm">TEE<b>LAB</b></span>
+  </a>
+  <div class="navlinks">
+    {links.map((l) => <a href={l.href}>{l.label}</a>)}
+  </div>
+  <a class="cart" href="/warenkorb">WARENKORB · 0</a>
+</nav>

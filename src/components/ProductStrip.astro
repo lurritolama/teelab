@@ -1,0 +1,25 @@
+---
+// Platzhalter-Produkte (Namen/Preise vorläufig, Bilder folgen).
+const products = [
+  { tag: 'CLASSIC CUP', name: 'Fairway 70', desc: 'Der Allrounder. 70 mm, klassische Mulde, für Driver bis Hybrid.', price: 'CHF 9 · 5er-Set' },
+  { tag: 'LOW PROFILE', name: 'Iron 38', desc: 'Flacher Kopf, 38 mm. Für Eisen und Par-3-Löcher.', price: 'CHF 9 · 5er-Set' },
+  { tag: 'SIGNATURE', name: 'Neon Mix', desc: 'Gemischte Farben, 83 mm Driver-Länge.', price: 'CHF 12 · 5er-Set', dots: ['#45f08a', '#22d3ee', '#f0459b', '#f5c518'] },
+];
+---
+<section class="strip">
+  <h2>// Fertige Modelle — direkt bestellbar</h2>
+  <div class="cards">
+    {products.map((p) => (
+      <a class="card" href="/shop">
+        <div class="thumb"><img src="/placeholder-product.svg" alt={`Produktfoto ${p.name} folgt`} /></div>
+        <div class="tag">{p.tag}</div>
+        <div class="nm">{p.name}</div>
+        <div class="ds">
+          {p.dots && p.dots.map((c) => <span class="dot" style={`color:${c};background:${c}`}></span>)}
+          {p.desc}
+        </div>
+        <div class="pr">{p.price}</div>
+      </a>
+    ))}
+  </div>
+</section>

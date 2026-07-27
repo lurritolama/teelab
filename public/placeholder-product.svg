@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <defs>
+    <pattern id="pg" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M34 0 H0 V34" fill="none" stroke="#14382a" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <filter id="pgl" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="400" height="400" fill="#08130d"/>
+  <rect width="400" height="400" fill="url(#pg)"/>
+  <g filter="url(#pgl)" transform="translate(140,90) scale(1.5)" stroke="#45f08a" stroke-width="2" stroke-linejoin="round" fill="rgba(69,240,138,.07)">
+    <path d="M12 16 Q30 30 48 16 L52 28 Q30 40 8 28 Z"/>
+    <path d="M23 30 L23 64 L37 64 L37 30"/>
+    <path d="M23 64 L30 80 L37 64 Z"/>
+  </g>
+  <text x="200" y="372" text-anchor="middle" font-family="ui-monospace,Menlo,Consolas,monospace"
+        font-size="13" letter-spacing="3" fill="#7fa593">PRODUKTFOTO · FOLGT</text>
+</svg>

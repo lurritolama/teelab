@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" fill="none">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 H0 V40" fill="none" stroke="#14382a" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <filter id="g" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="800" height="500" fill="#08130d"/>
+  <rect width="800" height="500" fill="url(#grid)"/>
+
+  <!-- printer chamber frame -->
+  <rect x="150" y="70" width="500" height="360" rx="10" stroke="#1d4a37" stroke-width="2"/>
+  <path d="M138 92 V70 H160 M640 70 H662 V92 M662 408 V430 H640 M160 430 H138 V408"
+        stroke="#f0459b" stroke-width="2.5" fill="none"/>
+
+  <!-- gantry + nozzle (cyan) -->
+  <line x1="150" y1="150" x2="650" y2="150" stroke="#22d3ee" stroke-width="3"/>
+  <path d="M388 150 L388 178 L400 192 L412 178 L412 150 Z" fill="rgba(34,211,238,.15)" stroke="#22d3ee" stroke-width="2"/>
+
+  <!-- build plate (neon) -->
+  <line x1="210" y1="392" x2="590" y2="392" stroke="#45f08a" stroke-width="3"/>
+
+  <!-- printed tee on the plate -->
+  <g filter="url(#g)" stroke="#45f08a" stroke-width="2.6" stroke-linejoin="round" fill="rgba(69,240,138,.08)">
+    <path d="M373 300 Q400 314 427 300 L431 313 Q400 325 369 313 Z"/>
+    <path d="M392 314 L392 378 L408 378 L408 314"/>
+    <path d="M392 378 L400 392 L408 378 Z"/>
+  </g>
+
+</svg>

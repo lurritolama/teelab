@@ -1,0 +1,16 @@
+---
+const legal = [
+  { label: 'Über uns', href: '/ueber-uns' },
+  { label: 'Kontakt', href: '/kontakt' },
+  { label: 'Versand', href: '/versand' },
+  { label: 'AGB', href: '/agb' },
+  { label: 'Datenschutz', href: '/datenschutz' },
+  { label: 'Impressum', href: '/impressum' },
+];
+---
+<footer>
+  <div class="foot-wm">TEELAB<span class="cur">_</span></div>
+  <div class="foot-links">
+    {legal.map((l) => <a href={l.href}>{l.label}</a>)}
+  </div>
+</footer>
