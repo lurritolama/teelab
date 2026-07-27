@@ -333,6 +333,16 @@ function updateStats(tri, vol) {
 }
 
 // ---------- Export: zwei Teile (unten + oben) als ZIP ----------
+// Druckfertig ausrichten: Modell ist Y-hoch. Slicer nutzen Z-hoch.
+//  unten: RotX(-90) -> Würfel(+Steckloch)-Fläche flach aufs Bett, Spitze zeigt hoch
+//  oben:  RotX(+90) -> flacher Zapfenboden aufs Bett, Cup zeigt hoch (Fase ~34° = stützenfrei)
+function printOriented(geo, kind) {
+  const g = geo.clone();
+  g.applyMatrix4(new THREE.Matrix4().makeRotationX(kind === 'lower' ? -Math.PI / 2 : Math.PI / 2));
+  g.computeBoundingBox();
+  g.translate(0, 0, -g.boundingBox.min.z);   // Grundfläche auf Z = 0
+  return g;
+}
 function geomPos(geo) { const g = geo.index ? geo.toNonIndexed() : geo; return g.attributes.position.array; }
 function fileBase() { return `teelab_tee_${P.headType}_${P.length}mm`; }
 function download(blob, name) {
@@ -378,14 +388,14 @@ function make3mfBlob(geo) {
 }
 async function export3MF() {
   const base = fileBase(), zip = new JSZip();
-  zip.file(base + '_1-unten.3mf', await make3mfBlob(currentParts.lower));
-  zip.file(base + '_2-oben.3mf', await make3mfBlob(currentParts.upper));
+  zip.file(base + '_1-unten.3mf', await make3mfBlob(printOriented(currentParts.lower, 'lower')));
+  zip.file(base + '_2-oben.3mf', await make3mfBlob(printOriented(currentParts.upper, 'upper')));
   download(await zip.generateAsync({ type: 'blob' }), base + '_2teile.zip');
 }
 async function exportSTL() {
   const base = fileBase(), zip = new JSZip();
-  zip.file(base + '_1-unten.stl', stlString(currentParts.lower));
-  zip.file(base + '_2-oben.stl', stlString(currentParts.upper));
+  zip.file(base + '_1-unten.stl', stlString(printOriented(currentParts.lower, 'lower')));
+  zip.file(base + '_2-oben.stl', stlString(printOriented(currentParts.upper, 'upper')));
   download(await zip.generateAsync({ type: 'blob' }), base + '_2teile.zip');
 }
 
