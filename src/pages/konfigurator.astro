@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout
+  title="Konfigurator — TeeLab"
+  description="Gestalte dein Golf-Tee millimetergenau: Länge, Kopfform, Schaft, Abschlaghöhe und Farbe. Als 3MF oder STL herunterladen."
+>
+  <section class="konf-intro">
+    <div class="kicker">// Beta · Tester-Zugang</div>
+    <h1>Bau dein Tee.</h1>
+    <p>
+      Stell Länge, Kopfform, Schaft, Abschlaghöhe und Farbe nach deinem Geschmack ein — die 3D-Vorschau
+      aktualisiert sich live. Wenn's passt, lade dein Tee als <b>3MF</b> (empfohlen) oder <b>STL</b> herunter
+      und schick es uns: Wir drucken dir ein Testexemplar. Am besten am Desktop bedienen.
+    </p>
+  </section>
+
+  <div class="konf-frame">
+    <iframe src="/tee-konfigurator/" title="TeeLab Tee-Konfigurator" loading="eager"></iframe>
+  </div>
+</BaseLayout>
+
+<style>
+  .konf-intro { padding: 34px 26px 4px; }
+  .konf-intro .kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 3px; color: var(--cyan);
+    text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .konf-intro .kicker::before { content: ""; width: 28px; height: 1px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .konf-intro h1 { font-family: var(--disp); font-weight: 700; font-size: 40px; line-height: 1.05; letter-spacing: -.5px; }
+  .konf-intro p { color: var(--muted); font-size: 15px; line-height: 1.7; margin-top: 14px; max-width: 640px; }
+  .konf-intro b { color: var(--neon); }
+
+  .konf-frame { padding: 18px 26px 46px; }
+  .konf-frame iframe {
+    width: 100%; height: 84vh; min-height: 620px; display: block;
+    border: 1px solid var(--line2); border-radius: 6px; background: #0b0f0d;
+  }
+  @media (max-width: 760px) {
+    .konf-intro h1 { font-size: 30px; }
+    .konf-frame iframe { height: 78vh; min-height: 520px; }
+  }
+</style>

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TeeLab · Konfigurator</title>
+<style>
+  :root {
+    --bg: #0f1512; --panel: #18201c; --panel2: #202a24; --line: #2d3a32;
+    --text: #e7efe9; --muted: #8ba095; --accent: #4ade80; --accent-d: #22c55e; --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: grid; grid-template-columns: 340px 1fr; height: 100vh; overflow: hidden;
+  }
+  #panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 18px 18px 40px; }
+  #panel h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: .3px; }
+  #panel .sub { color: var(--muted); font-size: 12px; margin: 0 0 18px; }
+  .group { border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 6px; margin-bottom: 14px; background: var(--panel2); }
+  .group h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
+  .row { margin-bottom: 12px; }
+  .row label { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; }
+  .row label .val { color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent-d); }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { flex: 1 1 auto; padding: 7px 6px; font-size: 12px; cursor: pointer; background: #141a16; color: var(--muted); border: 1px solid var(--line); border-radius: 7px; transition: .12s; }
+  .seg button.active { background: var(--accent-d); color: #04140a; border-color: var(--accent-d); font-weight: 600; }
+  .presets { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+  .presets button { flex: 1 1 40px; padding: 6px 2px; font-size: 11px; background:#141a16; color:var(--muted); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
+  .presets button:hover { border-color: var(--accent-d); color: var(--text); }
+  .swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .swatches button { aspect-ratio: 1; border-radius: 6px; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .swatches button.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(74,222,128,.25); }
+  .warn { display:none; background: rgba(245,158,11,.12); border:1px solid var(--warn); color:#fcd48a; font-size:11.5px; padding:8px 10px; border-radius:7px; margin-top:4px; }
+  .warn.show { display:block; }
+  .testnote { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+  .btn-alt { width:100%; padding:9px; margin-top:6px; font-size:12.5px; cursor:pointer; border:1px solid var(--line); border-radius:8px; background:#141a16; color:var(--text); }
+  .btn-alt:hover { border-color: var(--accent-d); }
+  #view { position: relative; }
+  #stats { position:absolute; left:14px; bottom:12px; font-size:11px; color:var(--muted); background:rgba(15,21,18,.7); padding:6px 9px; border-radius:6px; font-variant-numeric:tabular-nums; }
+  #badge { position:absolute; right:14px; bottom:12px; font-size:11px; padding:6px 9px; border-radius:6px; background:rgba(15,21,18,.7); }
+  #badge.ok { color:#7ee2a4; } #badge.bad { color:#fca5a5; }
+  #hint { position:absolute; right:14px; top:12px; font-size:11px; color:var(--muted); }
+  #reset { position:absolute; left:14px; top:12px; font-size:11px; color:var(--muted); background:rgba(15,21,18,.7); border:1px solid var(--line); border-radius:6px; padding:5px 9px; cursor:pointer; }
+  .disabled { opacity:.35; pointer-events:none; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <h1>TeeLab Konfigurator</h1>
+    <p class="sub">Beta · Stell dein Tee ein und lade es zum Drucken herunter</p>
+
+    <div class="group">
+      <h2>Grundform</h2>
+      <div class="row">
+        <label>Kopf-Typ</label>
+        <div class="seg" id="headType">
+          <button data-v="cup" class="active">Cup</button>
+          <button data-v="flat">Flat</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>Länge <span class="val" id="lengthVal"></span></label>
+        <div class="presets" id="lengthPresets">
+          <button data-v="38">38</button><button data-v="54">54</button>
+          <button data-v="70">70</button><button data-v="83">83</button><button data-v="101">101</button>
+        </div>
+        <input type="range" id="length" min="30" max="101" step="1" value="70" />
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Kopf</h2>
+      <div class="row" id="cupDiaRow">
+        <label>Ø Auflage / Cup <span class="val" id="cupDiaVal"></span></label>
+        <input type="range" id="cupDia" min="7" max="16" step="0.5" value="11" />
+      </div>
+      <div class="row" id="cupDepthRow">
+        <label>Cup-Tiefe <span class="val" id="cupDepthVal"></span></label>
+        <input type="range" id="cupDepth" min="0.5" max="5" step="0.25" value="3" />
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Schaft & Spitze</h2>
+      <div class="row">
+        <label>Ø Schaft <span class="val" id="shaftDiaVal"></span></label>
+        <input type="range" id="shaftDia" min="3" max="8" step="0.25" value="5" />
+        <div class="warn" id="shaftWarn">Dünner Schaft: mehr Distanz, aber bruchgefährdet. Für Druck PETG/Nylon empfohlen.</div>
+      </div>
+      <div class="row">
+        <label>Schaftprofil</label>
+        <div class="seg" id="shaftProfile">
+          <button data-v="straight" class="active">Gerade</button>
+          <button data-v="taper">Konisch</button>
+          <button data-v="waisted">Tailliert</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>Spitze <span class="val" id="tipVal"></span></label>
+        <input type="range" id="tipSharp" min="0" max="1" step="0.05" value="0.5" />
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Höhenstopp (Abschlaghöhe)</h2>
+      <div class="row">
+        <label>Ring-Grösse <span class="val" id="ringSizeVal"></span></label>
+        <input type="range" id="ringSize" min="0" max="2" step="0.1" value="0.8" />
+      </div>
+      <div class="row">
+        <label>Ring-Position <span class="val" id="ringPosVal"></span></label>
+        <input type="range" id="ringPos" min="0.25" max="0.7" step="0.01" value="0.45" />
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Farbe</h2>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="group">
+      <h2>Herunterladen</h2>
+      <p class="testnote">Lade dein Tee als Datei herunter und schick sie uns zum Drucken. <b>3MF empfohlen.</b></p>
+      <button class="btn-alt" id="export3mf">3MF herunterladen</button>
+      <button class="btn-alt" id="exportStl">STL herunterladen</button>
+    </div>
+  </div>
+
+  <div id="view">
+    <button id="reset">Ansicht zurücksetzen</button>
+    <div id="hint">Ziehen zum Drehen · Scroll zum Zoomen</div>
+    <div id="stats"></div>
+    <div id="badge"></div>
+  </div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const COLORS = [
+  ['Schwarz', '#1c1c1c'], ['Weiss', '#eceff0'], ['Rot', '#d8332f'], ['Orange', '#ef7d1a'],
+  ['Gelb', '#f5c518'], ['Grün', '#37a24a'], ['Blau', '#2f6fd6'], ['Pink', '#e5459b'],
+];
+
+const P = {
+  headType: 'cup', length: 70, cupDia: 11, cupDepth: 3,
+  shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, ringSize: 0.8, ringPos: 0.45,
+  color: COLORS[5][1],
+};
+
+// ---------- Scene ----------
+const view = document.getElementById('view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f0d);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 3000);
+const CAM_START = new THREE.Vector3(70, 60, 92);
+const TARGET = new THREE.Vector3(0, 33, 0);
+camera.position.copy(CAM_START);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+view.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.copy(TARGET);
+controls.minDistance = 40;
+controls.maxDistance = 220;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x223322, 0.9));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(60, 120, 80); scene.add(key);
+const fill = new THREE.DirectionalLight(0xbfefd0, 0.5); fill.position.set(-80, 30, -40); scene.add(fill);
+scene.add(new THREE.GridHelper(160, 16, 0x2d3a32, 0x1c2620));
+
+let teeMesh = null;
+const material = new THREE.MeshStandardMaterial({ color: P.color, roughness: 0.5, metalness: 0.05 });
+
+// ---------- Geometry ----------
+function shaftRadiusAt(t, rs) {
+  if (P.shaftProfile === 'taper') return rs * (0.8 + 0.35 * t);
+  if (P.shaftProfile === 'waisted') return rs * (1 - 0.28 * Math.sin(Math.PI * t));
+  return rs;
+}
+
+function buildProfile() {
+  const L = P.length, rs = P.shaftDia / 2, pts = [];
+  const push = (r, y) => pts.push(new THREE.Vector2(Math.max(r, 0), y));
+  const tipH = 2 + P.tipSharp * 6;
+  push(0, 0); push(rs * 0.98, tipH);
+
+  const rCup = P.cupDia / 2;
+  const headTopY = L;
+  const headBaseY = P.headType === 'cup'
+    ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2)
+    : L - 2.5;
+
+  const ringY = P.ringPos * L, ringR = rs + P.ringSize, steps = 40;
+  for (let i = 1; i <= steps; i++) {
+    const y = tipH + (headBaseY - tipH) * (i / steps);
+    const t = (y - tipH) / (headBaseY - tipH);
+    let r = shaftRadiusAt(t, rs);
+    if (P.ringSize > 0.001) {
+      const half = 1.6, d = Math.abs(y - ringY);
+      if (d < half) r += (ringR - r) * Math.cos((d / half) * Math.PI * 0.5);
+    }
+    push(r, y);
+  }
+
+  if (P.headType === 'cup') {
+    push(rCup * 0.55, headBaseY + (headTopY - headBaseY) * 0.35);
+    push(rCup, headTopY - P.cupDepth * 0.15);
+    for (let i = 1; i <= 14; i++) {
+      const a = i / 14;
+      push(rCup * Math.cos(a * Math.PI * 0.5), headTopY - P.cupDepth * Math.sin(a * Math.PI * 0.5));
+    }
+    push(0, headTopY - P.cupDepth);
+  } else { // flat
+    const rFlat = Math.max(rCup * 0.75, rs + 1.2);
+    push(rFlat, headBaseY + 1.0); push(rFlat, headTopY - 0.6); push(rFlat - 0.6, headTopY); push(0, headTopY);
+  }
+  return pts;
+}
+
+// Signed volume (mm^3). Positive => outward-facing, closed solid.
+function signedVolume(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  const p = g.attributes.position.array; let v = 0;
+  for (let i = 0; i < p.length; i += 9) {
+    const ax=p[i],ay=p[i+1],az=p[i+2], bx=p[i+3],by=p[i+4],bz=p[i+5], cx=p[i+6],cy=p[i+7],cz=p[i+8];
+    v += (ax*(by*cz-bz*cy) - ay*(bx*cz-bz*cx) + az*(bx*cy-by*cx)) / 6;
+  }
+  return v;
+}
+
+function rebuild() {
+  const geo = new THREE.LatheGeometry(buildProfile(), 96);
+  geo.computeVertexNormals();
+  const vol = signedVolume(geo);
+
+  if (teeMesh) { scene.remove(teeMesh); teeMesh.geometry.dispose(); }
+  teeMesh = new THREE.Mesh(geo, material);
+  scene.add(teeMesh);
+  material.color.set(P.color);
+
+  updateStats(geo, vol);
+}
+
+function updateStats(g, vol) {
+  const tri = (g.index ? g.index.count : g.attributes.position.count) / 3;
+  document.getElementById('stats').textContent =
+    `L ${P.length} mm · Ø Schaft ${P.shaftDia} mm · ${P.headType} · ${tri|0} △ · ${(vol/1000).toFixed(2)} cm³`;
+  const badge = document.getElementById('badge');
+  const solid = vol > 1;
+  badge.textContent = solid ? '● druckfertiges Volumen' : '● Geometrie prüfen';
+  badge.className = solid ? 'ok' : 'bad';
+}
+
+// ---------- Export (test only) ----------
+function triangles() {
+  const g = teeMesh.geometry.index ? teeMesh.geometry.toNonIndexed() : teeMesh.geometry;
+  return g.attributes.position.array; // groups of 9 floats = 1 triangle
+}
+function fileBase() { return `golftee_${P.headType}_${P.length}mm`; }
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function exportSTL() {
+  const p = triangles(); let s = 'solid golftee\n';
+  for (let i = 0; i < p.length; i += 9) {
+    s += 'facet normal 0 0 0\n outer loop\n';
+    for (let j = 0; j < 9; j += 3) s += `  vertex ${p[i+j].toFixed(4)} ${p[i+j+1].toFixed(4)} ${p[i+j+2].toFixed(4)}\n`;
+    s += ' endloop\nendfacet\n';
+  }
+  s += 'endsolid golftee\n';
+  download(new Blob([s], { type: 'model/stl' }), fileBase() + '.stl');
+}
+function export3MF() {
+  const p = triangles(), nTri = p.length / 9; let verts = '', tris = '';
+  for (let i = 0; i < p.length; i += 3) verts += `<vertex x="${p[i].toFixed(4)}" y="${p[i+1].toFixed(4)}" z="${p[i+2].toFixed(4)}"/>`;
+  for (let t = 0; t < nTri; t++) tris += `<triangle v1="${t*3}" v2="${t*3+1}" v3="${t*3+2}"/>`;
+  const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+ <metadata name="Application">Golf-Tee Konfigurator</metadata>
+ <resources><object id="1" type="model"><mesh>
+   <vertices>${verts}</vertices><triangles>${tris}</triangles>
+ </mesh></object></resources>
+ <build><item objectid="1"/></build>
+</model>`;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`;
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', contentTypes);
+  zip.folder('_rels').file('.rels', rels);
+  zip.folder('3D').file('3dmodel.model', model);
+  zip.generateAsync({ type: 'blob', mimeType: 'model/3mf' }).then(b => download(b, fileBase() + '.3mf'));
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const fmt = {
+  lengthVal: () => P.length + ' mm', cupDiaVal: () => P.cupDia.toFixed(1) + ' mm',
+  cupDepthVal: () => P.cupDepth.toFixed(2) + ' mm', shaftDiaVal: () => P.shaftDia.toFixed(2) + ' mm',
+  tipVal: () => P.tipSharp < .33 ? 'stumpf' : P.tipSharp > .66 ? 'scharf' : 'mittel',
+  ringSizeVal: () => P.ringSize < .05 ? 'aus' : '+' + P.ringSize.toFixed(1) + ' mm',
+  ringPosVal: () => Math.round(P.ringPos * P.length) + ' mm',
+};
+function refreshLabels() {
+  for (const k in fmt) { const el = $(k); if (el) el.textContent = fmt[k](); }
+  $('shaftWarn').classList.toggle('show', P.shaftDia < 4);
+  $('cupDiaRow').classList.toggle('disabled', P.headType === 'flat');
+  $('cupDepthRow').classList.toggle('disabled', P.headType !== 'cup');
+}
+function bindRange(id, key, isFloat = true) {
+  $(id).addEventListener('input', e => { P[key] = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value); refreshLabels(); rebuild(); });
+}
+['cupDia','cupDepth','shaftDia','tipSharp','ringSize','ringPos'].forEach(k => bindRange(k, k));
+bindRange('length', 'length', false);
+function bindSeg(id, key) {
+  $(id).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    $(id).querySelectorAll('button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); P[key] = b.dataset.v; refreshLabels(); rebuild();
+  }));
+}
+bindSeg('headType', 'headType'); bindSeg('shaftProfile', 'shaftProfile');
+$('lengthPresets').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  P.length = parseInt(b.dataset.v); $('length').value = P.length; refreshLabels(); rebuild();
+}));
+
+const sw = $('swatches');
+COLORS.forEach(([name, hex]) => {
+  const b = document.createElement('button');
+  b.style.background = hex; b.title = name;
+  if (hex === P.color) b.classList.add('active');
+  b.addEventListener('click', () => {
+    sw.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); P.color = hex; material.color.set(hex);
+  });
+  sw.appendChild(b);
+});
+
+$('reset').addEventListener('click', () => { camera.position.copy(CAM_START); controls.target.copy(TARGET); controls.update(); });
+$('export3mf').addEventListener('click', export3MF);
+$('exportStl').addEventListener('click', exportSTL);
+
+// ---------- Resize & loop ----------
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+window.addEventListener('resize', resize);
+resize(); refreshLabels(); rebuild();
+(function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
+</script>
+</body>
+</html>
