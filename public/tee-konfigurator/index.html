@@ -111,11 +111,11 @@
       <h2>Würfel (Steckverbindung, gefast)</h2>
       <div class="row">
         <label>Würfel-Grösse <span class="val" id="cubeSizeVal"></span></label>
-        <input type="range" id="cubeSize" min="4" max="14" step="0.5" value="9" />
+        <input type="range" id="cubeSize" min="5" max="14" step="0.5" value="9" />
       </div>
       <div class="row">
         <label>Würfel-Position <span class="val" id="cubePosVal"></span></label>
-        <input type="range" id="cubePos" min="0.25" max="0.7" step="0.01" value="0.45" />
+        <input type="range" id="cubePos" min="0.28" max="0.68" step="0.01" value="0.45" />
       </div>
       <div class="row">
         <label class="check"><input type="checkbox" id="explode" /> Teile getrennt anzeigen</label>
@@ -146,9 +146,7 @@
 {
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-    "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.7.0/build/index.module.js",
-    "three-bvh-csg": "https://unpkg.com/three-bvh-csg@0.0.16/build/index.module.js"
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
   }
 }
 </script>
@@ -156,44 +154,6 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
-
-// CSG NUR für die Steck-Tasche (Box aus Würfel schneiden). Die Loch-Box ragt oben
-// raus und liegt seitlich innen -> KEINE koplanaren Flächen -> der robuste CSG-Fall.
-// Lazy geladen: bei CDN-Aussetzer fällt der Würfel auf 'kein Loch' zurück.
-let CSG = null;
-try { CSG = await import('three-bvh-csg'); }
-catch (e) { console.warn('CSG nicht verfügbar – Würfel ohne Steckloch:', e); }
-
-// Nur Position (einheitliche Attribute für mergeGeometries)
-function plainGeo(geo) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', g.getAttribute('position').clone());
-  return out;
-}
-// Position + Normal (beide CSG-Operanden brauchen identische Attribute)
-function pnGeo(geo) { const p = plainGeo(geo); p.computeVertexNormals(); return p; }
-
-// Gefaste Box: alle Kanten schräg (nicht rund), via Konvexhülle von 24 Eckpunkten
-function chamferBox(w, h, d, c) {
-  c = Math.min(c, w / 2 - 0.2, h / 2 - 0.2, d / 2 - 0.2);
-  const hx = w / 2, hy = h / 2, hz = d / 2, pts = [];
-  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-    pts.push(new THREE.Vector3(sx * (hx - c), sy * hy, sz * hz));
-    pts.push(new THREE.Vector3(sx * hx, sy * (hy - c), sz * hz));
-    pts.push(new THREE.Vector3(sx * hx, sy * hy, sz * (hz - c)));
-  }
-  return new ConvexGeometry(pts);
-}
-function csgSubtract(a, b) {
-  const ev = new CSG.Evaluator();
-  ev.attributes = ['position', 'normal'];   // nur diese Attribute (unsere Geometrien haben kein uv)
-  const A = new CSG.Brush(pnGeo(a)); A.updateMatrixWorld();
-  const B = new CSG.Brush(pnGeo(b)); B.updateMatrixWorld();
-  return ev.evaluate(A, B, CSG.SUBTRACTION).geometry;
-}
 
 const COLORS = [
   ['Schwarz', '#1c1c1c'], ['Weiss', '#eceff0'], ['Rot', '#d8332f'], ['Orange', '#ef7d1a'],
@@ -229,86 +189,11 @@ const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(60, 120,
 const fill = new THREE.DirectionalLight(0xbfefd0, 0.5); fill.position.set(-80, 30, -40); scene.add(fill);
 scene.add(new THREE.GridHelper(160, 16, 0x2d3a32, 0x1c2620));
 
-let teeMesh = null;
-const material = new THREE.MeshStandardMaterial({ color: P.color, roughness: 0.5, metalness: 0.05 });
+let lowerMesh = null, upperMesh = null, currentParts = { lower: null, upper: null };
+// DoubleSide: Slicing nutzt die Geometrie, nicht die Normalen -> Wicklung egal, Rendern bleibt korrekt.
+const material = new THREE.MeshStandardMaterial({ color: P.color, roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
 
-// ---------- Geometry ----------
-function shaftRadiusAt(t, rs) {
-  if (P.shaftProfile === 'taper') return rs * (0.8 + 0.35 * t);
-  if (P.shaftProfile === 'waisted') return rs * (1 - 0.28 * Math.sin(Math.PI * t));
-  return rs;
-}
-
-function shaftR(y, tipH, headBaseY, rs) {
-  const t = Math.max(0, Math.min(1, (y - tipH) / (headBaseY - tipH)));
-  return shaftRadiusAt(t, rs);
-}
-
-// Baut das Tee als ZWEI druckbare Teile:
-//  unten = Spitze + Schaft + abgerundeter Würfel (ein Stück, Würfel = Klebefläche)
-//  oben  = Cup/Flat (wird nach dem Druck oben auf den Würfel geklebt)
-// Getrennt am oberen Würfelrand; jedes Teil für sich wasserdicht.
-function buildParts() {
-  const L = P.length, rs = P.shaftDia / 2;
-  const tipH = 2 + P.tipSharp * 6;
-  const rCup = P.cupDia / 2, headTopY = L;
-  const headBaseY = P.headType === 'cup'
-    ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2)
-    : L - 2.5;
-  const V = (r, y) => new THREE.Vector2(Math.max(r, 0), y);
-
-  const shaftPts = (y0, y1) => {
-    const a = [], n = 24;
-    for (let i = 0; i <= n; i++) { const y = y0 + (y1 - y0) * (i / n); a.push(V(shaftR(y, tipH, headBaseY, rs), y)); }
-    return a;
-  };
-  const headPts = () => {
-    const p = [];
-    if (P.headType === 'cup') {
-      p.push(V(rCup * 0.55, headBaseY + (headTopY - headBaseY) * 0.35));
-      p.push(V(rCup, headTopY - P.cupDepth * 0.15));
-      for (let i = 1; i <= 14; i++) { const a = i / 14; p.push(V(rCup * Math.cos(a * Math.PI * 0.5), headTopY - P.cupDepth * Math.sin(a * Math.PI * 0.5))); }
-      p.push(V(0, headTopY - P.cupDepth));
-    } else {
-      const rFlat = Math.max(rCup * 0.75, rs + 1.2);
-      p.push(V(rFlat, headBaseY + 1.0), V(rFlat, headTopY - 0.6), V(rFlat - 0.6, headTopY), V(0, headTopY));
-    }
-    return p;
-  };
-
-  const s = P.cubeSize;
-  const cubeC = P.cubePos * L;
-  const cubeTop = cubeC + s / 2;
-  const cham = Math.min(s * 0.14, 1.3);
-  const sock = Math.max(2.4, Math.min(s - 2, s * 0.5));   // Steckloch (quadratisch)
-  const sockD = Math.min(s * 0.45, 6);                    // Lochtiefe (< s/2 -> Schaft bleibt drunter)
-  const clr = 0.25;                                       // Passungsspiel je Seite
-  const pegW = Math.max(1.6, sock - 2 * clr);
-  const pegH = Math.max(1.5, sockD - 0.6);
-
-  // ----- Unteres Teil: Spitze + Schaft (bis Würfelmitte) + gefaster Würfel MIT Steckloch -----
-  const lowerPts = [V(0, 0), V(rs * 0.98, tipH), ...shaftPts(tipH, cubeC), V(rs, cubeC), V(0, cubeC)];
-  const lowerLathe = new THREE.LatheGeometry(lowerPts, 96);
-  let cube = chamferBox(s, s, s, cham);
-  cube.translate(0, cubeC, 0);
-  if (CSG) {
-    const hole = new THREE.BoxGeometry(sock, sockD + 2, sock);
-    hole.translate(0, cubeTop - sockD + (sockD + 2) / 2, 0);   // ragt oben raus, Seiten innen -> keine koplanaren Flächen
-    cube = csgSubtract(cube, hole);
-  }
-  const lower = mergeGeometries([plainGeo(lowerLathe), plainGeo(cube)], false);
-
-  // ----- Oberes Teil: Cup + Schaft + gefaster Zapfen (steckt ins Loch) -----
-  const upperPts = [V(0, cubeTop), V(rs, cubeTop), ...shaftPts(cubeTop, headBaseY), ...headPts()];
-  const upperLathe = new THREE.LatheGeometry(upperPts, 96);
-  const peg = chamferBox(pegW, pegH, pegW, Math.min(cham, pegW * 0.18));
-  peg.translate(0, cubeTop - pegH / 2, 0);
-  const upper = mergeGeometries([plainGeo(upperLathe), plainGeo(peg)], false);
-
-  return { lower, upper };
-}
-
-// Signed volume (mm^3). Positive => outward-facing, closed solid.
+// ---------- Signed volume (mm^3) ----------
 function signedVolume(geo) {
   const g = geo.index ? geo.toNonIndexed() : geo;
   const p = g.attributes.position.array; let v = 0;
@@ -316,16 +201,110 @@ function signedVolume(geo) {
     const ax=p[i],ay=p[i+1],az=p[i+2], bx=p[i+3],by=p[i+4],bz=p[i+5], cx=p[i+6],cy=p[i+7],cz=p[i+8];
     v += (ax*(by*cz-bz*cy) - ay*(bx*cz-bz*cx) + az*(bx*cy-by*cx)) / 6;
   }
-  return v;
+  return Math.abs(v);
 }
 
-let lowerMesh = null, upperMesh = null, currentParts = { lower: null, upper: null };
+// ================= GARANTIERT wasserdichter Ring-Mesh-Bau (kein CSG) =================
+const NSEG = 32;
+const CIRCLE = Array.from({ length: NSEG }, (_, i) => { const a = i / NSEG * Math.PI * 2; return [Math.cos(a), Math.sin(a)]; });
+// gefaste Quadrat-Kontur (Halbmaß 1), Fasen-Anteil cr; NSEG Punkte
+function chamSquare(cr) {
+  const c = Math.max(0, Math.min(0.49, cr));
+  const cor = [[1,1-c],[1-c,1],[-(1-c),1],[-1,1-c],[-1,-(1-c)],[-(1-c),-1],[1-c,-1],[1,-(1-c)]];
+  const per = NSEG / 8, pts = [];
+  for (let k = 0; k < 8; k++) { const a = cor[k], b = cor[(k+1)%8]; for (let j = 0; j < per; j++) { const t = j/per; pts.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); } }
+  return pts;
+}
+const ringC = (y, r) => CIRCLE.map(u => [u[0]*r, y, u[1]*r]);
+const ringS = (y, half, cr) => chamSquare(cr).map(u => [u[0]*half, y, u[1]*half]);
+
+function TeeMesh() {
+  const pos = [];
+  const tri = (a, b, c) => pos.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]);
+  const quad = (a, b, c, d) => { tri(a,b,c); tri(a,c,d); };
+  // verbindet zwei gleich lange Ringe (geteilte Vertices -> dicht)
+  const strip = (r0, r1) => { for (let i = 0; i < NSEG; i++) { const j = (i+1)%NSEG; quad(r0[i], r0[j], r1[j], r1[i]); } };
+  const fan = (r, apex) => { for (let i = 0; i < NSEG; i++) { const j = (i+1)%NSEG; tri(r[i], r[j], apex); } };
+  const geometry = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  };
+  return { strip, fan, geometry };
+}
+
+function buildTee() {
+  const L = P.length, rs = P.shaftDia / 2;
+  const tipH = 2 + P.tipSharp * 6;
+  const rCup = P.cupDia / 2, headTopY = L;
+  const headBaseY = P.headType === 'cup' ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2) : L - 2.5;
+  const s = P.cubeSize, half = s / 2, cubeC = P.cubePos * L, cubeBottom = cubeC - half, cubeTop = cubeC + half;
+  const cham = Math.min(s * 0.10, 1.1), vcr = cham / half;
+  const sockHalf = Math.max(1.4, Math.min(half - 1, s * 0.25));   // Steckloch (halbe Kantenlänge)
+  const sockD = Math.min(s * 0.45, 6);                            // Lochtiefe
+  const scr = Math.min(0.18, 0.6 / sockHalf);                     // kleine Fase an Loch/Zapfen
+  const clr = 0.25, pegHalf = Math.max(0.8, sockHalf - clr);      // Zapfen mit Passungsspiel
+  const pegLen = Math.max(1.2, sockD - 1.0);                      // Steck-Länge (mit Bodenspiel)
+  const shaftRad = (y) => { const t = Math.max(0, Math.min(1, (y - tipH) / (headBaseY - tipH)));
+    if (P.shaftProfile === 'taper') return rs * (0.8 + 0.35 * t);
+    if (P.shaftProfile === 'waisted') return rs * (1 - 0.28 * Math.sin(Math.PI * t));
+    return rs; };
+
+  // ---------- UNTEN: Spitze + Schaft + gefaster Würfel + Steckloch ----------
+  const Lo = TeeMesh();
+  let prev = ringC(tipH, rs * 0.98);
+  Lo.fan(prev, [0, 0, 0]);                                        // Spitze
+  const nSh = Math.max(4, Math.round((cubeBottom - tipH) / 4));
+  for (let i = 1; i <= nSh; i++) { const y = tipH + (cubeBottom - tipH) * (i / nSh); const r = ringC(y, shaftRad(y)); Lo.strip(prev, r); prev = r; }
+  const sBotIn = ringS(cubeBottom, half - cham, vcr);
+  Lo.strip(prev, sBotIn);                                         // flacher Boden-Kranz Schaft->Würfelkante
+  const sBot = ringS(cubeBottom + cham, half, vcr);
+  Lo.strip(sBotIn, sBot);                                         // untere Fase
+  const sTop = ringS(cubeTop - cham, half, vcr);
+  Lo.strip(sBot, sTop);                                           // Würfelkörper
+  const sTopIn = ringS(cubeTop, half - cham, vcr);
+  Lo.strip(sTop, sTopIn);                                         // obere Fase
+  const sockOpen = ringS(cubeTop, sockHalf, scr);
+  Lo.strip(sTopIn, sockOpen);                                     // Deckelkranz -> Lochrand
+  const sockBot = ringS(cubeTop - sockD, sockHalf, scr);
+  Lo.strip(sockOpen, sockBot);                                    // Lochwände
+  Lo.fan(sockBot, [0, cubeTop - sockD, 0]);                       // Lochboden
+  const lower = Lo.geometry();
+
+  // ---------- OBEN: Zapfen + Schaft + Cup/Flat ----------
+  const Up = TeeMesh();
+  const pegBottomY = cubeTop - pegLen;
+  const pBot = ringS(pegBottomY, pegHalf, scr);
+  const pTop = ringS(cubeTop, pegHalf, scr);
+  Up.fan(pBot, [0, pegBottomY, 0]);                               // Zapfenboden
+  Up.strip(pBot, pTop);                                           // Zapfenkörper
+  const shBot = ringC(cubeTop, shaftRad(cubeTop));
+  Up.strip(pTop, shBot);                                          // Kranz Zapfen -> Schaftunterkante
+  prev = shBot;
+  const nSh2 = Math.max(4, Math.round((headBaseY - cubeTop) / 4));
+  for (let i = 1; i <= nSh2; i++) { const y = cubeTop + (headBaseY - cubeTop) * (i / nSh2); const r = ringC(y, shaftRad(y)); Up.strip(prev, r); prev = r; }
+  if (P.headType === 'cup') {
+    const rimY = headTopY;
+    const flare = ringC(headBaseY + (rimY - headBaseY) * 0.35, rCup * 0.55); Up.strip(prev, flare); prev = flare;
+    const rim = ringC(rimY - P.cupDepth * 0.15, rCup); Up.strip(prev, rim); prev = rim;
+    for (let i = 1; i <= 12; i++) { const a = i / 14; const r = ringC(rimY - P.cupDepth * Math.sin(a * Math.PI * 0.5), rCup * Math.cos(a * Math.PI * 0.5)); Up.strip(prev, r); prev = r; }
+    Up.fan(prev, [0, rimY - P.cupDepth, 0]);                      // Cup-Mulde (Kegel bis Zentrum, kein Null-Ring)
+  } else {
+    const rFlat = Math.max(rCup * 0.75, rs + 1.2);
+    const f1 = ringC(headBaseY + 1.0, rFlat); Up.strip(prev, f1);
+    const f2 = ringC(headTopY - 0.6, rFlat); Up.strip(f1, f2);
+    const f3 = ringC(headTopY, rFlat - 0.6); Up.strip(f2, f3);
+    Up.fan(f3, [0, headTopY, 0]);
+  }
+  const upper = Up.geometry();
+
+  return { lower, upper };
+}
 
 function rebuild() {
  try {
-  const { lower, upper } = buildParts();
-  if (!lower || !upper) throw new Error('merge lower=' + !!lower + ' upper=' + !!upper);
-  lower.computeVertexNormals(); upper.computeVertexNormals();
+  const { lower, upper } = buildTee();
   currentParts = { lower, upper };
 
   if (lowerMesh) { scene.remove(lowerMesh); lowerMesh.geometry.dispose(); }
@@ -335,7 +314,7 @@ function rebuild() {
   upperMesh.position.y = P.explode ? 18 : 0;
   material.color.set(P.color);
 
-  const triCount = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
+  const triCount = g => g.attributes.position.count / 3;
   updateStats(triCount(lower) + triCount(upper), signedVolume(lower) + signedVolume(upper));
  } catch (err) {
   document.getElementById('badge').textContent = '⚠ Fehler – bitte Einstellung ändern';
@@ -354,10 +333,7 @@ function updateStats(tri, vol) {
 }
 
 // ---------- Export: zwei Teile (unten + oben) als ZIP ----------
-function geomPos(geo) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  return g.attributes.position.array; // groups of 9 floats = 1 triangle
-}
+function geomPos(geo) { const g = geo.index ? geo.toNonIndexed() : geo; return g.attributes.position.array; }
 function fileBase() { return `teelab_tee_${P.headType}_${P.length}mm`; }
 function download(blob, name) {
   const a = document.createElement('a');
