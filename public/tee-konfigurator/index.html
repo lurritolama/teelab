@@ -106,14 +106,14 @@
     </div>
 
     <div class="group">
-      <h2>Höhenstopp (Abschlaghöhe)</h2>
+      <h2>Würfel (Verbindung & Höhenstopp)</h2>
       <div class="row">
-        <label>Ring-Grösse <span class="val" id="ringSizeVal"></span></label>
-        <input type="range" id="ringSize" min="0" max="2" step="0.1" value="0.8" />
+        <label>Würfel-Grösse <span class="val" id="cubeSizeVal"></span></label>
+        <input type="range" id="cubeSize" min="0" max="14" step="0.5" value="9" />
       </div>
       <div class="row">
-        <label>Ring-Position <span class="val" id="ringPosVal"></span></label>
-        <input type="range" id="ringPos" min="0.25" max="0.7" step="0.01" value="0.45" />
+        <label>Würfel-Position <span class="val" id="cubePosVal"></span></label>
+        <input type="range" id="cubePos" min="0.25" max="0.7" step="0.01" value="0.45" />
       </div>
     </div>
 
@@ -149,6 +149,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const COLORS = [
   ['Schwarz', '#1c1c1c'], ['Weiss', '#eceff0'], ['Rot', '#d8332f'], ['Orange', '#ef7d1a'],
@@ -157,7 +158,7 @@ const COLORS = [
 
 const P = {
   headType: 'cup', length: 70, cupDia: 11, cupDepth: 3,
-  shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, ringSize: 0.8, ringPos: 0.45,
+  shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, cubeSize: 9, cubePos: 0.45,
   color: COLORS[5][1],
 };
 
@@ -206,16 +207,11 @@ function buildProfile() {
     ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2)
     : L - 2.5;
 
-  const ringY = P.ringPos * L, ringR = rs + P.ringSize, steps = 40;
+  const steps = 40;
   for (let i = 1; i <= steps; i++) {
     const y = tipH + (headBaseY - tipH) * (i / steps);
     const t = (y - tipH) / (headBaseY - tipH);
-    let r = shaftRadiusAt(t, rs);
-    if (P.ringSize > 0.001) {
-      const half = 1.6, d = Math.abs(y - ringY);
-      if (d < half) r += (ringR - r) * Math.cos((d / half) * Math.PI * 0.5);
-    }
-    push(r, y);
+    push(shaftRadiusAt(t, rs), y);   // smooth shaft; der Würfel kommt separat als Box dazu
   }
 
   if (P.headType === 'cup') {
@@ -245,7 +241,17 @@ function signedVolume(geo) {
 }
 
 function rebuild() {
-  const geo = new THREE.LatheGeometry(buildProfile(), 96);
+  // Zwei je für sich wasserdichte Körper: Tee (Rotationskörper) + Würfel (Box), mittig
+  // auf dem Schaft. Überlappend zusammengeführt -> der Slicer vereinigt sie beim Druck.
+  // Robust (bricht nie), verbindet oberen & unteren Teil, flache Flächen zum Personalisieren.
+  const parts = [new THREE.LatheGeometry(buildProfile(), 96)];
+  if (P.cubeSize > 0.01) {
+    const s = P.cubeSize;
+    const box = new THREE.BoxGeometry(s, s, s);
+    box.translate(0, P.cubePos * P.length, 0);
+    parts.push(box);
+  }
+  const geo = parts.length > 1 ? mergeGeometries(parts, false) : parts[0];
   geo.computeVertexNormals();
   const vol = signedVolume(geo);
 
@@ -260,7 +266,7 @@ function rebuild() {
 function updateStats(g, vol) {
   const tri = (g.index ? g.index.count : g.attributes.position.count) / 3;
   document.getElementById('stats').textContent =
-    `L ${P.length} mm · Ø Schaft ${P.shaftDia} mm · ${P.headType} · ${tri|0} △ · ${(vol/1000).toFixed(2)} cm³`;
+    `L ${P.length} mm · Ø Schaft ${P.shaftDia} mm · ${P.headType} · ${tri|0} △ · ~${(vol/1000).toFixed(2)} cm³`;
   const badge = document.getElementById('badge');
   const solid = vol > 1;
   badge.textContent = solid ? '● druckfertiges Volumen' : '● Geometrie prüfen';
@@ -322,8 +328,8 @@ const fmt = {
   lengthVal: () => P.length + ' mm', cupDiaVal: () => P.cupDia.toFixed(1) + ' mm',
   cupDepthVal: () => P.cupDepth.toFixed(2) + ' mm', shaftDiaVal: () => P.shaftDia.toFixed(2) + ' mm',
   tipVal: () => P.tipSharp < .33 ? 'stumpf' : P.tipSharp > .66 ? 'scharf' : 'mittel',
-  ringSizeVal: () => P.ringSize < .05 ? 'aus' : '+' + P.ringSize.toFixed(1) + ' mm',
-  ringPosVal: () => Math.round(P.ringPos * P.length) + ' mm',
+  cubeSizeVal: () => P.cubeSize < .05 ? 'aus' : P.cubeSize.toFixed(1) + ' mm',
+  cubePosVal: () => Math.round(P.cubePos * P.length) + ' mm',
 };
 function refreshLabels() {
   for (const k in fmt) { const el = $(k); if (el) el.textContent = fmt[k](); }
@@ -334,7 +340,7 @@ function refreshLabels() {
 function bindRange(id, key, isFloat = true) {
   $(id).addEventListener('input', e => { P[key] = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value); refreshLabels(); rebuild(); });
 }
-['cupDia','cupDepth','shaftDia','tipSharp','ringSize','ringPos'].forEach(k => bindRange(k, k));
+['cupDia','cupDepth','shaftDia','tipSharp','cubeSize','cubePos'].forEach(k => bindRange(k, k));
 bindRange('length', 'length', false);
 function bindSeg(id, key) {
   $(id).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
