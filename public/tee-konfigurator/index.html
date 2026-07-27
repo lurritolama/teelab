@@ -108,7 +108,7 @@
     </div>
 
     <div class="group">
-      <h2>Würfel (Klebefläche, abgerundet)</h2>
+      <h2>Würfel (Steckverbindung, gefast)</h2>
       <div class="row">
         <label>Würfel-Grösse <span class="val" id="cubeSizeVal"></span></label>
         <input type="range" id="cubeSize" min="4" max="14" step="0.5" value="9" />
@@ -129,7 +129,7 @@
 
     <div class="group">
       <h2>Herunterladen</h2>
-      <p class="testnote">Dein Tee kommt als <b>zwei Teile</b> (unten: Spitze + Würfel · oben: Cup) in einer ZIP — nach dem Druck zusammenkleben. 3MF empfohlen.</p>
+      <p class="testnote">Dein Tee kommt als <b>zwei Teile</b> in einer ZIP: unten Spitze + Würfel (mit Steckloch), oben Cup mit Zapfen — nach dem Druck <b>zusammenstecken & kleben</b>. 3MF empfohlen.</p>
       <button class="btn-alt" id="export3mf">3MF herunterladen (2 Teile)</button>
       <button class="btn-alt" id="exportStl">STL herunterladen (2 Teile)</button>
     </div>
@@ -146,7 +146,9 @@
 {
   "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+    "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.7.0/build/index.module.js",
+    "three-bvh-csg": "https://unpkg.com/three-bvh-csg@0.0.16/build/index.module.js"
   }
 }
 </script>
@@ -155,7 +157,43 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+
+// CSG NUR für die Steck-Tasche (Box aus Würfel schneiden). Die Loch-Box ragt oben
+// raus und liegt seitlich innen -> KEINE koplanaren Flächen -> der robuste CSG-Fall.
+// Lazy geladen: bei CDN-Aussetzer fällt der Würfel auf 'kein Loch' zurück.
+let CSG = null;
+try { CSG = await import('three-bvh-csg'); }
+catch (e) { console.warn('CSG nicht verfügbar – Würfel ohne Steckloch:', e); }
+
+// Nur Position (einheitliche Attribute für mergeGeometries)
+function plainGeo(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', g.getAttribute('position').clone());
+  return out;
+}
+// Position + Normal (beide CSG-Operanden brauchen identische Attribute)
+function pnGeo(geo) { const p = plainGeo(geo); p.computeVertexNormals(); return p; }
+
+// Gefaste Box: alle Kanten schräg (nicht rund), via Konvexhülle von 24 Eckpunkten
+function chamferBox(w, h, d, c) {
+  c = Math.min(c, w / 2 - 0.2, h / 2 - 0.2, d / 2 - 0.2);
+  const hx = w / 2, hy = h / 2, hz = d / 2, pts = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+    pts.push(new THREE.Vector3(sx * (hx - c), sy * hy, sz * hz));
+    pts.push(new THREE.Vector3(sx * hx, sy * (hy - c), sz * hz));
+    pts.push(new THREE.Vector3(sx * hx, sy * hy, sz * (hz - c)));
+  }
+  return new ConvexGeometry(pts);
+}
+function csgSubtract(a, b) {
+  const ev = new CSG.Evaluator();
+  ev.attributes = ['position', 'normal'];   // nur diese Attribute (unsere Geometrien haben kein uv)
+  const A = new CSG.Brush(pnGeo(a)); A.updateMatrixWorld();
+  const B = new CSG.Brush(pnGeo(b)); B.updateMatrixWorld();
+  return ev.evaluate(A, B, CSG.SUBTRACTION).geometry;
+}
 
 const COLORS = [
   ['Schwarz', '#1c1c1c'], ['Weiss', '#eceff0'], ['Rot', '#d8332f'], ['Orange', '#ef7d1a'],
@@ -238,21 +276,34 @@ function buildParts() {
     return p;
   };
 
-  // Trennebene = oberer Würfelrand (in den Schaftbereich geklemmt)
+  const s = P.cubeSize;
   const cubeC = P.cubePos * L;
-  const cutY = Math.max(tipH + 2, Math.min(headBaseY - 2, cubeC + P.cubeSize / 2));
+  const cubeTop = cubeC + s / 2;
+  const cham = Math.min(s * 0.14, 1.3);
+  const sock = Math.max(2.4, Math.min(s - 2, s * 0.5));   // Steckloch (quadratisch)
+  const sockD = Math.min(s * 0.45, 6);                    // Lochtiefe (< s/2 -> Schaft bleibt drunter)
+  const clr = 0.25;                                       // Passungsspiel je Seite
+  const pegW = Math.max(1.6, sock - 2 * clr);
+  const pegH = Math.max(1.5, sockD - 0.6);
 
-  // Unteres Teil: Spitze -> Schaft bis cutY -> flacher Deckel  +  abgerundeter Würfel
-  const lowerPts = [V(0, 0), V(rs * 0.98, tipH), ...shaftPts(tipH, cutY), V(rs, cutY), V(0, cutY)];
+  // ----- Unteres Teil: Spitze + Schaft (bis Würfelmitte) + gefaster Würfel MIT Steckloch -----
+  const lowerPts = [V(0, 0), V(rs * 0.98, tipH), ...shaftPts(tipH, cubeC), V(rs, cubeC), V(0, cubeC)];
   const lowerLathe = new THREE.LatheGeometry(lowerPts, 96);
-  const s = P.cubeSize, rad = Math.min(s * 0.18, 2.2);
-  const cube = new RoundedBoxGeometry(s, s, s, 4, rad);
+  let cube = chamferBox(s, s, s, cham);
   cube.translate(0, cubeC, 0);
-  const lower = mergeGeometries([lowerLathe.toNonIndexed(), cube.toNonIndexed()], false);
+  if (CSG) {
+    const hole = new THREE.BoxGeometry(sock, sockD + 2, sock);
+    hole.translate(0, cubeTop - sockD + (sockD + 2) / 2, 0);   // ragt oben raus, Seiten innen -> keine koplanaren Flächen
+    cube = csgSubtract(cube, hole);
+  }
+  const lower = mergeGeometries([plainGeo(lowerLathe), plainGeo(cube)], false);
 
-  // Oberes Teil: flacher Boden bei cutY -> Schaft -> Cup/Flat
-  const upperPts = [V(0, cutY), V(rs, cutY), ...shaftPts(cutY, headBaseY), ...headPts()];
-  const upper = new THREE.LatheGeometry(upperPts, 96);
+  // ----- Oberes Teil: Cup + Schaft + gefaster Zapfen (steckt ins Loch) -----
+  const upperPts = [V(0, cubeTop), V(rs, cubeTop), ...shaftPts(cubeTop, headBaseY), ...headPts()];
+  const upperLathe = new THREE.LatheGeometry(upperPts, 96);
+  const peg = chamferBox(pegW, pegH, pegW, Math.min(cham, pegW * 0.18));
+  peg.translate(0, cubeTop - pegH / 2, 0);
+  const upper = mergeGeometries([plainGeo(upperLathe), plainGeo(peg)], false);
 
   return { lower, upper };
 }
@@ -271,7 +322,9 @@ function signedVolume(geo) {
 let lowerMesh = null, upperMesh = null, currentParts = { lower: null, upper: null };
 
 function rebuild() {
+ try {
   const { lower, upper } = buildParts();
+  if (!lower || !upper) throw new Error('merge lower=' + !!lower + ' upper=' + !!upper);
   lower.computeVertexNormals(); upper.computeVertexNormals();
   currentParts = { lower, upper };
 
@@ -284,6 +337,11 @@ function rebuild() {
 
   const triCount = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
   updateStats(triCount(lower) + triCount(upper), signedVolume(lower) + signedVolume(upper));
+ } catch (err) {
+  document.getElementById('badge').textContent = '⚠ Fehler – bitte Einstellung ändern';
+  document.getElementById('badge').className = 'bad';
+  console.error('rebuild error:', err);
+ }
 }
 
 function updateStats(tri, vol) {
