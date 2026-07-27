@@ -37,6 +37,8 @@
   .warn { display:none; background: rgba(245,158,11,.12); border:1px solid var(--warn); color:#fcd48a; font-size:11.5px; padding:8px 10px; border-radius:7px; margin-top:4px; }
   .warn.show { display:block; }
   .testnote { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+  .check { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text); cursor:pointer; }
+  .check input { accent-color: var(--accent-d); width:15px; height:15px; }
   .btn-alt { width:100%; padding:9px; margin-top:6px; font-size:12.5px; cursor:pointer; border:1px solid var(--line); border-radius:8px; background:#141a16; color:var(--text); }
   .btn-alt:hover { border-color: var(--accent-d); }
   #view { position: relative; }
@@ -51,7 +53,7 @@
 <body>
   <div id="panel">
     <h1>TeeLab Konfigurator</h1>
-    <p class="sub">Beta · Stell dein Tee ein und lade es zum Drucken herunter</p>
+    <p class="sub">Beta · Stell dein Tee ein und lade es als 2-teiligen Druck herunter</p>
 
     <div class="group">
       <h2>Grundform</h2>
@@ -106,14 +108,17 @@
     </div>
 
     <div class="group">
-      <h2>Würfel (Verbindung & Höhenstopp)</h2>
+      <h2>Würfel (Klebefläche, abgerundet)</h2>
       <div class="row">
         <label>Würfel-Grösse <span class="val" id="cubeSizeVal"></span></label>
-        <input type="range" id="cubeSize" min="0" max="14" step="0.5" value="9" />
+        <input type="range" id="cubeSize" min="4" max="14" step="0.5" value="9" />
       </div>
       <div class="row">
         <label>Würfel-Position <span class="val" id="cubePosVal"></span></label>
         <input type="range" id="cubePos" min="0.25" max="0.7" step="0.01" value="0.45" />
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="explode" /> Teile getrennt anzeigen</label>
       </div>
     </div>
 
@@ -124,9 +129,9 @@
 
     <div class="group">
       <h2>Herunterladen</h2>
-      <p class="testnote">Lade dein Tee als Datei herunter und schick sie uns zum Drucken. <b>3MF empfohlen.</b></p>
-      <button class="btn-alt" id="export3mf">3MF herunterladen</button>
-      <button class="btn-alt" id="exportStl">STL herunterladen</button>
+      <p class="testnote">Dein Tee kommt als <b>zwei Teile</b> (unten: Spitze + Würfel · oben: Cup) in einer ZIP — nach dem Druck zusammenkleben. 3MF empfohlen.</p>
+      <button class="btn-alt" id="export3mf">3MF herunterladen (2 Teile)</button>
+      <button class="btn-alt" id="exportStl">STL herunterladen (2 Teile)</button>
     </div>
   </div>
 
@@ -150,6 +155,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const COLORS = [
   ['Schwarz', '#1c1c1c'], ['Weiss', '#eceff0'], ['Rot', '#d8332f'], ['Orange', '#ef7d1a'],
@@ -159,7 +165,7 @@ const COLORS = [
 const P = {
   headType: 'cup', length: 70, cupDia: 11, cupDepth: 3,
   shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, cubeSize: 9, cubePos: 0.45,
-  color: COLORS[5][1],
+  explode: false, color: COLORS[5][1],
 };
 
 // ---------- Scene ----------
@@ -195,38 +201,60 @@ function shaftRadiusAt(t, rs) {
   return rs;
 }
 
-function buildProfile() {
-  const L = P.length, rs = P.shaftDia / 2, pts = [];
-  const push = (r, y) => pts.push(new THREE.Vector2(Math.max(r, 0), y));
-  const tipH = 2 + P.tipSharp * 6;
-  push(0, 0); push(rs * 0.98, tipH);
+function shaftR(y, tipH, headBaseY, rs) {
+  const t = Math.max(0, Math.min(1, (y - tipH) / (headBaseY - tipH)));
+  return shaftRadiusAt(t, rs);
+}
 
-  const rCup = P.cupDia / 2;
-  const headTopY = L;
+// Baut das Tee als ZWEI druckbare Teile:
+//  unten = Spitze + Schaft + abgerundeter Würfel (ein Stück, Würfel = Klebefläche)
+//  oben  = Cup/Flat (wird nach dem Druck oben auf den Würfel geklebt)
+// Getrennt am oberen Würfelrand; jedes Teil für sich wasserdicht.
+function buildParts() {
+  const L = P.length, rs = P.shaftDia / 2;
+  const tipH = 2 + P.tipSharp * 6;
+  const rCup = P.cupDia / 2, headTopY = L;
   const headBaseY = P.headType === 'cup'
     ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2)
     : L - 2.5;
+  const V = (r, y) => new THREE.Vector2(Math.max(r, 0), y);
 
-  const steps = 40;
-  for (let i = 1; i <= steps; i++) {
-    const y = tipH + (headBaseY - tipH) * (i / steps);
-    const t = (y - tipH) / (headBaseY - tipH);
-    push(shaftRadiusAt(t, rs), y);   // smooth shaft; der Würfel kommt separat als Box dazu
-  }
-
-  if (P.headType === 'cup') {
-    push(rCup * 0.55, headBaseY + (headTopY - headBaseY) * 0.35);
-    push(rCup, headTopY - P.cupDepth * 0.15);
-    for (let i = 1; i <= 14; i++) {
-      const a = i / 14;
-      push(rCup * Math.cos(a * Math.PI * 0.5), headTopY - P.cupDepth * Math.sin(a * Math.PI * 0.5));
+  const shaftPts = (y0, y1) => {
+    const a = [], n = 24;
+    for (let i = 0; i <= n; i++) { const y = y0 + (y1 - y0) * (i / n); a.push(V(shaftR(y, tipH, headBaseY, rs), y)); }
+    return a;
+  };
+  const headPts = () => {
+    const p = [];
+    if (P.headType === 'cup') {
+      p.push(V(rCup * 0.55, headBaseY + (headTopY - headBaseY) * 0.35));
+      p.push(V(rCup, headTopY - P.cupDepth * 0.15));
+      for (let i = 1; i <= 14; i++) { const a = i / 14; p.push(V(rCup * Math.cos(a * Math.PI * 0.5), headTopY - P.cupDepth * Math.sin(a * Math.PI * 0.5))); }
+      p.push(V(0, headTopY - P.cupDepth));
+    } else {
+      const rFlat = Math.max(rCup * 0.75, rs + 1.2);
+      p.push(V(rFlat, headBaseY + 1.0), V(rFlat, headTopY - 0.6), V(rFlat - 0.6, headTopY), V(0, headTopY));
     }
-    push(0, headTopY - P.cupDepth);
-  } else { // flat
-    const rFlat = Math.max(rCup * 0.75, rs + 1.2);
-    push(rFlat, headBaseY + 1.0); push(rFlat, headTopY - 0.6); push(rFlat - 0.6, headTopY); push(0, headTopY);
-  }
-  return pts;
+    return p;
+  };
+
+  // Trennebene = oberer Würfelrand (in den Schaftbereich geklemmt)
+  const cubeC = P.cubePos * L;
+  const cutY = Math.max(tipH + 2, Math.min(headBaseY - 2, cubeC + P.cubeSize / 2));
+
+  // Unteres Teil: Spitze -> Schaft bis cutY -> flacher Deckel  +  abgerundeter Würfel
+  const lowerPts = [V(0, 0), V(rs * 0.98, tipH), ...shaftPts(tipH, cutY), V(rs, cutY), V(0, cutY)];
+  const lowerLathe = new THREE.LatheGeometry(lowerPts, 96);
+  const s = P.cubeSize, rad = Math.min(s * 0.18, 2.2);
+  const cube = new RoundedBoxGeometry(s, s, s, 4, rad);
+  cube.translate(0, cubeC, 0);
+  const lower = mergeGeometries([lowerLathe.toNonIndexed(), cube.toNonIndexed()], false);
+
+  // Oberes Teil: flacher Boden bei cutY -> Schaft -> Cup/Flat
+  const upperPts = [V(0, cutY), V(rs, cutY), ...shaftPts(cutY, headBaseY), ...headPts()];
+  const upper = new THREE.LatheGeometry(upperPts, 96);
+
+  return { lower, upper };
 }
 
 // Signed volume (mm^3). Positive => outward-facing, closed solid.
@@ -240,86 +268,91 @@ function signedVolume(geo) {
   return v;
 }
 
-function rebuild() {
-  // Zwei je für sich wasserdichte Körper: Tee (Rotationskörper) + Würfel (Box), mittig
-  // auf dem Schaft. Überlappend zusammengeführt -> der Slicer vereinigt sie beim Druck.
-  // Robust (bricht nie), verbindet oberen & unteren Teil, flache Flächen zum Personalisieren.
-  const parts = [new THREE.LatheGeometry(buildProfile(), 96)];
-  if (P.cubeSize > 0.01) {
-    const s = P.cubeSize;
-    const box = new THREE.BoxGeometry(s, s, s);
-    box.translate(0, P.cubePos * P.length, 0);
-    parts.push(box);
-  }
-  const geo = parts.length > 1 ? mergeGeometries(parts, false) : parts[0];
-  geo.computeVertexNormals();
-  const vol = signedVolume(geo);
+let lowerMesh = null, upperMesh = null, currentParts = { lower: null, upper: null };
 
-  if (teeMesh) { scene.remove(teeMesh); teeMesh.geometry.dispose(); }
-  teeMesh = new THREE.Mesh(geo, material);
-  scene.add(teeMesh);
+function rebuild() {
+  const { lower, upper } = buildParts();
+  lower.computeVertexNormals(); upper.computeVertexNormals();
+  currentParts = { lower, upper };
+
+  if (lowerMesh) { scene.remove(lowerMesh); lowerMesh.geometry.dispose(); }
+  if (upperMesh) { scene.remove(upperMesh); upperMesh.geometry.dispose(); }
+  lowerMesh = new THREE.Mesh(lower, material); scene.add(lowerMesh);
+  upperMesh = new THREE.Mesh(upper, material); scene.add(upperMesh);
+  upperMesh.position.y = P.explode ? 18 : 0;
   material.color.set(P.color);
 
-  updateStats(geo, vol);
+  const triCount = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
+  updateStats(triCount(lower) + triCount(upper), signedVolume(lower) + signedVolume(upper));
 }
 
-function updateStats(g, vol) {
-  const tri = (g.index ? g.index.count : g.attributes.position.count) / 3;
+function updateStats(tri, vol) {
   document.getElementById('stats').textContent =
-    `L ${P.length} mm · Ø Schaft ${P.shaftDia} mm · ${P.headType} · ${tri|0} △ · ~${(vol/1000).toFixed(2)} cm³`;
+    `L ${P.length} mm · Ø Schaft ${P.shaftDia} mm · ${P.headType} · 2 Teile · ${tri|0} △ · ~${(vol/1000).toFixed(2)} cm³`;
   const badge = document.getElementById('badge');
   const solid = vol > 1;
-  badge.textContent = solid ? '● druckfertiges Volumen' : '● Geometrie prüfen';
+  badge.textContent = solid ? '● 2 druckfertige Teile' : '● Geometrie prüfen';
   badge.className = solid ? 'ok' : 'bad';
 }
 
-// ---------- Export (test only) ----------
-function triangles() {
-  const g = teeMesh.geometry.index ? teeMesh.geometry.toNonIndexed() : teeMesh.geometry;
+// ---------- Export: zwei Teile (unten + oben) als ZIP ----------
+function geomPos(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
   return g.attributes.position.array; // groups of 9 floats = 1 triangle
 }
-function fileBase() { return `golftee_${P.headType}_${P.length}mm`; }
+function fileBase() { return `teelab_tee_${P.headType}_${P.length}mm`; }
 function download(blob, name) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
-function exportSTL() {
-  const p = triangles(); let s = 'solid golftee\n';
+function stlString(geo) {
+  const p = geomPos(geo); let s = 'solid tee\n';
   for (let i = 0; i < p.length; i += 9) {
     s += 'facet normal 0 0 0\n outer loop\n';
     for (let j = 0; j < 9; j += 3) s += `  vertex ${p[i+j].toFixed(4)} ${p[i+j+1].toFixed(4)} ${p[i+j+2].toFixed(4)}\n`;
     s += ' endloop\nendfacet\n';
   }
-  s += 'endsolid golftee\n';
-  download(new Blob([s], { type: 'model/stl' }), fileBase() + '.stl');
+  return s + 'endsolid tee\n';
 }
-function export3MF() {
-  const p = triangles(), nTri = p.length / 9; let verts = '', tris = '';
+const CT_3MF = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>`;
+const RELS_3MF = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`;
+function make3mfBlob(geo) {
+  const p = geomPos(geo), nTri = p.length / 9; let verts = '', tris = '';
   for (let i = 0; i < p.length; i += 3) verts += `<vertex x="${p[i].toFixed(4)}" y="${p[i+1].toFixed(4)}" z="${p[i+2].toFixed(4)}"/>`;
   for (let t = 0; t < nTri; t++) tris += `<triangle v1="${t*3}" v2="${t*3+1}" v3="${t*3+2}"/>`;
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
- <metadata name="Application">Golf-Tee Konfigurator</metadata>
+ <metadata name="Application">TeeLab Konfigurator</metadata>
  <resources><object id="1" type="model"><mesh>
    <vertices>${verts}</vertices><triangles>${tris}</triangles>
  </mesh></object></resources>
  <build><item objectid="1"/></build>
 </model>`;
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
- <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
- <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
-</Types>`;
-  const rels = `<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
- <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
-</Relationships>`;
   const zip = new JSZip();
-  zip.file('[Content_Types].xml', contentTypes);
-  zip.folder('_rels').file('.rels', rels);
+  zip.file('[Content_Types].xml', CT_3MF);
+  zip.folder('_rels').file('.rels', RELS_3MF);
   zip.folder('3D').file('3dmodel.model', model);
-  zip.generateAsync({ type: 'blob', mimeType: 'model/3mf' }).then(b => download(b, fileBase() + '.3mf'));
+  return zip.generateAsync({ type: 'blob', mimeType: 'model/3mf' });
+}
+async function export3MF() {
+  const base = fileBase(), zip = new JSZip();
+  zip.file(base + '_1-unten.3mf', await make3mfBlob(currentParts.lower));
+  zip.file(base + '_2-oben.3mf', await make3mfBlob(currentParts.upper));
+  download(await zip.generateAsync({ type: 'blob' }), base + '_2teile.zip');
+}
+async function exportSTL() {
+  const base = fileBase(), zip = new JSZip();
+  zip.file(base + '_1-unten.stl', stlString(currentParts.lower));
+  zip.file(base + '_2-oben.stl', stlString(currentParts.upper));
+  download(await zip.generateAsync({ type: 'blob' }), base + '_2teile.zip');
 }
 
 // ---------- UI ----------
@@ -328,7 +361,7 @@ const fmt = {
   lengthVal: () => P.length + ' mm', cupDiaVal: () => P.cupDia.toFixed(1) + ' mm',
   cupDepthVal: () => P.cupDepth.toFixed(2) + ' mm', shaftDiaVal: () => P.shaftDia.toFixed(2) + ' mm',
   tipVal: () => P.tipSharp < .33 ? 'stumpf' : P.tipSharp > .66 ? 'scharf' : 'mittel',
-  cubeSizeVal: () => P.cubeSize < .05 ? 'aus' : P.cubeSize.toFixed(1) + ' mm',
+  cubeSizeVal: () => P.cubeSize.toFixed(1) + ' mm',
   cubePosVal: () => Math.round(P.cubePos * P.length) + ' mm',
 };
 function refreshLabels() {
@@ -365,6 +398,7 @@ COLORS.forEach(([name, hex]) => {
   sw.appendChild(b);
 });
 
+$('explode').addEventListener('change', e => { P.explode = e.target.checked; if (upperMesh) upperMesh.position.y = P.explode ? 18 : 0; });
 $('reset').addEventListener('click', () => { camera.position.copy(CAM_START); controls.target.copy(TARGET); controls.update(); });
 $('export3mf').addEventListener('click', export3MF);
 $('exportStl').addEventListener('click', exportSTL);
