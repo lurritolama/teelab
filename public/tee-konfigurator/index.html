@@ -261,15 +261,13 @@ function buildTee() {
   Lo.strip(prev, sBotIn);                                         // flacher Boden-Kranz Schaft->Würfelkante
   const sBot = ringS(cubeBottom + cham, half, vcr);
   Lo.strip(sBotIn, sBot);                                         // untere Fase
-  const sTop = ringS(cubeTop - cham, half, vcr);
-  Lo.strip(sBot, sTop);                                           // Würfelkörper
-  const sTopIn = ringS(cubeTop, half - cham, vcr);
-  Lo.strip(sTop, sTopIn);                                         // obere Fase
+  const sTop = ringS(cubeTop, half, vcr);
+  Lo.strip(sBot, sTop);                                           // Würfelkörper bis Oberkante VOLL (Klebefläche = flach aufs Bett, kein Überhang)
   const sockOpen = ringS(cubeTop, sockHalf, scr);
-  Lo.strip(sTopIn, sockOpen);                                     // Deckelkranz -> Lochrand
+  Lo.strip(sTop, sockOpen);                                       // flacher Deckelkranz -> Lochrand
   const sockBot = ringS(cubeTop - sockD, sockHalf, scr);
-  Lo.strip(sockOpen, sockBot);                                    // Lochwände
-  Lo.fan(sockBot, [0, cubeTop - sockD, 0]);                       // Lochboden
+  Lo.strip(sockOpen, sockBot);                                    // gerade Lochwände (Zapfen steckt hier)
+  Lo.fan(sockBot, [0, Math.max(cubeBottom + 0.6, cubeTop - sockD - sockHalf * 1.6), 0]);  // steile Spitze (~30° v. Senkrechten) statt flachem Boden -> selbsttragend (Loch zeigt beim Druck nach unten)
   const lower = Lo.geometry();
 
   // ---------- OBEN: Zapfen + Schaft + Cup/Flat ----------
