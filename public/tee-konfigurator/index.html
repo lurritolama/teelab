@@ -340,7 +340,9 @@ function printOriented(geo, kind) {
   const g = geo.clone();
   g.applyMatrix4(new THREE.Matrix4().makeRotationX(kind === 'lower' ? -Math.PI / 2 : Math.PI / 2));
   g.computeBoundingBox();
-  g.translate(0, 0, -g.boundingBox.min.z);   // Grundfläche auf Z = 0
+  const bb = g.boundingBox;
+  // in den positiven Oktanten: Grundfläche auf Z=0, alles bei x,y >= 0 (3MF-konform, kein Slicer-Offset)
+  g.translate(-bb.min.x, -bb.min.y, -bb.min.z);
   return g;
 }
 function geomPos(geo) { const g = geo.index ? geo.toNonIndexed() : geo; return g.attributes.position.array; }
