@@ -62,6 +62,7 @@
         <div class="seg" id="headType">
           <button data-v="cup" class="active">Cup</button>
           <button data-v="flat">Flat</button>
+          <button data-v="eye">Auge</button>
         </div>
       </div>
       <div class="row">
@@ -124,7 +125,7 @@
 
     <div class="group">
       <h2>Farben (nach Höhe)</h2>
-      <div class="row">
+      <div class="row" id="numColorsRow">
         <label>Anzahl Farben</label>
         <div class="seg" id="numColors">
           <button data-v="1" class="active">1</button>
@@ -255,7 +256,8 @@ function buildTee() {
   const L = P.length, rs = P.shaftDia / 2;
   const tipH = 2 + P.tipSharp * 6;
   const rCup = P.cupDia / 2, headTopY = L;
-  const headBaseY = P.headType === 'cup' ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2) : L - 2.5;
+  const cupLike = P.headType === 'cup' || P.headType === 'eye';
+  const headBaseY = cupLike ? L - Math.max(P.cupDia * 0.35, P.cupDepth + 2) : L - 2.5;
   const s = P.cubeSize, half = s / 2, cubeC = P.cubePos * L, cubeBottom = cubeC - half, cubeTop = cubeC + half;
   const cham = Math.min(s * 0.10, 1.1), vcr = cham / half;
   const sockHalf = Math.max(1.4, Math.min(half - 1, s * 0.25));   // Steckloch (halbe Kantenlänge)
@@ -299,7 +301,7 @@ function buildTee() {
   prev = shBot;
   const nSh2 = Math.max(6, Math.round((headBaseY - cubeTop) / 1.8));   // dichter für weiche Farbübergänge
   for (let i = 1; i <= nSh2; i++) { const y = cubeTop + (headBaseY - cubeTop) * (i / nSh2); const r = ringC(y, shaftRad(y)); Up.strip(prev, r); prev = r; }
-  if (P.headType === 'cup') {
+  if (cupLike) {
     const rimY = headTopY;
     const rimWall = Math.max(1.5, rCup * 0.3);                    // dicke, druckbare Auflage-Randbreite
     const rBowl = Math.max(1.4, rCup - rimWall);                  // Mulden-Öffnungsradius
@@ -332,10 +334,20 @@ function applyBandColors(geo) {
   const pos = geo.attributes.position.array, n = pos.length / 3;
   const col = new Float32Array(pos.length), bi = new Float32Array(n);
   const c = new THREE.Color();
+  const eye = P.headType === 'eye';
+  const rc = P.cupDia / 2;
+  const cupBaseY = P.length - Math.max(P.cupDia * 0.35, P.cupDepth + 2);
   for (let i = 0; i < n; i++) {
-    const f = Math.max(0, Math.min(1, pos[i*3 + 1] / P.length));
-    const idx = bandIndexFor(f); bi[i] = idx;
-    c.set(P.bandColors[idx]);
+    const x = pos[i*3], y = pos[i*3 + 1], z = pos[i*3 + 2];
+    let idx;
+    if (eye) {
+      // Auge: Cup konzentrisch (0=Pupille schwarz, 1=Iris, 2=Weiss), Rest darunter = Weiss(2)
+      if (y >= cupBaseY - 0.01) { const r = Math.hypot(x, z); idx = r < rc * 0.30 ? 0 : (r < rc * 0.64 ? 1 : 2); }
+      else idx = 2;
+    } else {
+      idx = bandIndexFor(Math.max(0, Math.min(1, y / P.length)));
+    }
+    bi[i] = idx; c.set(P.bandColors[idx]);
     col[i*3] = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -519,9 +531,11 @@ function refreshLabels() {
   for (const k in fmt) { const el = $(k); if (el) el.textContent = fmt[k](); }
   $('shaftWarn').classList.toggle('show', P.shaftDia < 4);
   $('cupDiaRow').classList.toggle('disabled', P.headType === 'flat');
-  $('cupDepthRow').classList.toggle('disabled', P.headType !== 'cup');
-  $('stop1Row').style.display = P.numColors >= 2 ? '' : 'none';
-  $('stop2Row').style.display = P.numColors >= 3 ? '' : 'none';
+  $('cupDepthRow').classList.toggle('disabled', P.headType === 'flat');
+  const eye = P.headType === 'eye';
+  $('numColorsRow').style.display = eye ? 'none' : '';
+  $('stop1Row').style.display = (!eye && P.numColors >= 2) ? '' : 'none';
+  $('stop2Row').style.display = (!eye && P.numColors >= 3) ? '' : 'none';
 }
 function bindRange(id, key, isFloat = true) {
   $(id).addEventListener('input', e => { P[key] = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value); refreshLabels(); rebuild(); });
@@ -534,14 +548,23 @@ function bindSeg(id, key) {
     b.classList.add('active'); P[key] = b.dataset.v; refreshLabels(); rebuild();
   }));
 }
-bindSeg('headType', 'headType'); bindSeg('shaftProfile', 'shaftProfile');
+bindSeg('shaftProfile', 'shaftProfile');
+$('headType').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  $('headType').querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); P.headType = b.dataset.v;
+  if (P.headType === 'eye') {
+    P.numColors = 3; P.bandColors = ['#1c1c1c', '#2f6fd6', '#eceff0'];   // Pupille schwarz, Iris blau, Weiss
+    $('numColors').querySelectorAll('button').forEach(x => x.classList.toggle('active', x.dataset.v === '3'));
+  }
+  buildBandRows(); refreshLabels(); rebuild();
+}));
 $('lengthPresets').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
   P.length = parseInt(b.dataset.v); $('length').value = P.length; refreshLabels(); rebuild();
 }));
 
 // ----- Farb-Bänder UI -----
 const bandRowsEl = $('bandRows');
-const bandLabel = (i, n) => n === 1 ? 'Ganzes Tee' : (n === 2 ? ['Unten', 'Oben'][i] : ['Unten', 'Mitte', 'Oben'][i]);
+const bandLabel = (i, n) => P.headType === 'eye' ? ['Pupille', 'Iris', 'Weiss'][i] : (n === 1 ? 'Ganzes Tee' : (n === 2 ? ['Unten', 'Oben'][i] : ['Unten', 'Mitte', 'Oben'][i]));
 function buildBandRows() {
   bandRowsEl.innerHTML = '';
   for (let i = 0; i < P.numColors; i++) {
