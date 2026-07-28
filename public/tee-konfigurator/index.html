@@ -414,14 +414,29 @@ const RELS_3MF = `<?xml version="1.0" encoding="UTF-8"?>
  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
 </Relationships>`;
 function make3mfBlob(geo) {
-  const p = geomPos(geo), nTri = p.length / 9; let verts = '', tris = '';
-  for (let i = 0; i < p.length; i += 3) verts += `<vertex x="${p[i].toFixed(4)}" y="${p[i+1].toFixed(4)}" z="${p[i+2].toFixed(4)}"/>`;
-  for (let t = 0; t < nTri; t++) tris += `<triangle v1="${t*3}" v2="${t*3+1}" v3="${t*3+2}"/>`;
+  // 3MF ist ein INDIZIERTES Format: Slicer verschweissen NICHT nach Position (anders als bei STL),
+  // sondern vertrauen den Indizes. Also Vertices deduplizieren und Dreiecke auf gemeinsame
+  // Indizes zeigen lassen — sonst ist jedes Dreieck lose und der Slicer sieht offenes Chaos.
+  const p = geomPos(geo);
+  const map = new Map(), verts = [], idx = [];
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i].toFixed(4), y = p[i+1].toFixed(4), z = p[i+2].toFixed(4);
+    const k = x + ',' + y + ',' + z;
+    let id = map.get(k);
+    if (id === undefined) { id = verts.length; verts.push(`<vertex x="${x}" y="${y}" z="${z}"/>`); map.set(k, id); }
+    idx.push(id);
+  }
+  let vertsXml = verts.join(''), tris = '';
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t+1], c = idx[t+2];
+    if (a === b || b === c || a === c) continue;   // nach dem Verschweissen kollabierte Dreiecke überspringen
+    tris += `<triangle v1="${a}" v2="${b}" v3="${c}"/>`;
+  }
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
  <metadata name="Application">TeeLab Konfigurator</metadata>
  <resources><object id="1" type="model"><mesh>
-   <vertices>${verts}</vertices><triangles>${tris}</triangles>
+   <vertices>${vertsXml}</vertices><triangles>${tris}</triangles>
  </mesh></object></resources>
  <build><item objectid="1"/></build>
 </model>`;
