@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { products } from '../data/products.js';
+---
+<BaseLayout title="Shop — TeeLab" description="Fertige 3D-gedruckte Golf-Tees von TeeLab: Classic, Low Profile, Driver, Signature und der mehrfarbige Augen-Tee.">
+  <section class="page-head">
+    <div class="kicker">// Shop</div>
+    <h1>Fertige Modelle</h1>
+    <p>Direkt bestellbare Golf-Tees, 3D-gedruckt in der Schweiz. Du willst dein eigenes? Bau es im Konfigurator.</p>
+  </section>
+
+  <div class="shop-cta">
+    <div>
+      <div class="t">Dein eigenes Tee entwerfen</div>
+      <div class="s">Länge, Kopfform, Steckverbindung, Farben – millimetergenau selbst gestalten.</div>
+    </div>
+    <a class="btn primary" href="/konfigurator">▶ Konfigurator starten</a>
+  </div>
+
+  <section class="strip">
+    <div class="cards">
+      {products.map((p) => (
+        <a class="card" href={`/produkt/${p.slug}`}>
+          <div class="thumb"><img src="/placeholder-product.svg" alt={`Produktfoto ${p.name} folgt`} /></div>
+          <div class="tag">{p.tag}</div>
+          <div class="nm">{p.name}</div>
+          <div class="ds">
+            {p.dots && p.dots.map((c) => <span class="dot" style={`color:${c};background:${c}`}></span>)}
+            {p.desc.length > 90 ? p.desc.slice(0, 90) + '…' : p.desc}
+          </div>
+          <div class="pr">{p.price} · {p.unit}</div>
+        </a>
+      ))}
+    </div>
+  </section>
+</BaseLayout>

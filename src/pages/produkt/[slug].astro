@@ -1,0 +1,34 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { products, bySlug } from '../../data/products.js';
+
+export function getStaticPaths() {
+  return products.map((p) => ({ params: { slug: p.slug } }));
+}
+
+const { slug } = Astro.params;
+const p = bySlug(slug);
+---
+<BaseLayout title={`${p.name} — TeeLab`} description={p.desc}>
+  <div class="crumbs"><a href="/shop">Shop</a> / {p.name}</div>
+  <section class="pd">
+    <figure class="pd-media">
+      <img src="/placeholder-product.svg" alt={`Produktfoto ${p.name} folgt`} />
+    </figure>
+    <div>
+      <div class="tag">{p.tag}</div>
+      <h1>{p.name}</h1>
+      <div class="spec">
+        <div><div class="n">{p.length}</div>Länge</div>
+        <div><div class="n">{p.head}</div>Kopf</div>
+        <div><div class="n">{p.unit}</div>Menge</div>
+      </div>
+      <div class="price">{p.price} · {p.unit}</div>
+      <p class="desc">{p.desc}</p>
+      <div class="cta">
+        <a class="btn primary" href="/warenkorb">In den Warenkorb</a>
+        <a class="btn ghost" href="/konfigurator">Selbst gestalten</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
