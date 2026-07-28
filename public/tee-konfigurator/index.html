@@ -119,7 +119,7 @@
       </div>
       <div class="row">
         <label>Steck-Spiel <span class="val" id="fitVal"></span></label>
-        <input type="range" id="fit" min="0" max="0.3" step="0.02" value="0.1" />
+        <input type="range" id="fit" min="0" max="0.3" step="0.02" value="0.04" />
       </div>
       <div class="row">
         <label class="check"><input type="checkbox" id="explode" /> Teile getrennt anzeigen</label>
@@ -167,7 +167,7 @@ const COLORS = [
 const P = {
   headType: 'cup', length: 70, cupDia: 11, cupDepth: 3,
   shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, cubeSize: 9, cubePos: 0.45,
-  fit: 0.1, explode: false, color: COLORS[5][1],
+  fit: 0.04, explode: false, color: COLORS[5][1],
 };
 
 // ---------- Scene ----------
@@ -341,6 +341,43 @@ function updateStats(tri, vol) {
 // Druckfertig ausrichten: Modell ist Y-hoch. Slicer nutzen Z-hoch.
 //  unten: RotX(-90) -> Würfel(+Steckloch)-Fläche flach aufs Bett, Spitze zeigt hoch
 //  oben:  RotX(+90) -> flacher Zapfenboden aufs Bett, Cup zeigt hoch (Fase ~34° = stützenfrei)
+// Alle Dreiecke konsistent NACH AUSSEN wickeln (3MF verlangt das; STL ist egal).
+// Flood-Fill: Nachbarn müssen geteilte Kante gegenläufig durchlaufen; danach global
+// per Vorzeichen des Volumens nach aussen drehen.
+function orientConsistent(geo) {
+  const p = (geo.index ? geo.toNonIndexed() : geo).attributes.position.array;
+  const nt = p.length / 9;
+  const key = i => `${Math.round(p[i]*1000)},${Math.round(p[i+1]*1000)},${Math.round(p[i+2]*1000)}`;
+  const tk = [];
+  for (let t = 0; t < nt; t++) { const b = t*9; tk.push([key(b), key(b+3), key(b+6)]); }
+  const ue = (u,v) => u < v ? u+'|'+v : v+'|'+u;
+  const edgeMap = new Map();
+  for (let t = 0; t < nt; t++) { const k = tk[t]; for (let e = 0; e < 3; e++) { const em = ue(k[e], k[(e+1)%3]); (edgeMap.get(em) || edgeMap.set(em, []).get(em)).push(t); } }
+  const flip = t => { const b = t*9; for (let j = 0; j < 3; j++) { const tmp = p[b+3+j]; p[b+3+j] = p[b+6+j]; p[b+6+j] = tmp; } const s = tk[t][1]; tk[t][1] = tk[t][2]; tk[t][2] = s; };
+  const visited = new Array(nt).fill(false);
+  for (let seed = 0; seed < nt; seed++) {
+    if (visited[seed]) continue;
+    const stack = [seed]; visited[seed] = true;
+    while (stack.length) {
+      const t = stack.pop(), k = tk[t];
+      for (let e = 0; e < 3; e++) {
+        const u = k[e], v = k[(e+1)%3];
+        for (const nbt of (edgeMap.get(ue(u,v)) || [])) {
+          if (nbt === t || visited[nbt]) continue;
+          const nk = tk[nbt];
+          let same = false;
+          for (let ee = 0; ee < 3; ee++) if (nk[ee] === u && nk[(ee+1)%3] === v) { same = true; break; }
+          if (same) flip(nbt);
+          visited[nbt] = true; stack.push(nbt);
+        }
+      }
+    }
+  }
+  let vol = 0;
+  for (let i = 0; i < p.length; i += 9) { const ax=p[i],ay=p[i+1],az=p[i+2],bx=p[i+3],by=p[i+4],bz=p[i+5],cx=p[i+6],cy=p[i+7],cz=p[i+8]; vol += (ax*(by*cz-bz*cy)-ay*(bx*cz-bz*cx)+az*(bx*cy-by*cx))/6; }
+  if (vol < 0) for (let t = 0; t < nt; t++) flip(t);
+}
+
 function printOriented(geo, kind) {
   const g = geo.clone();
   g.applyMatrix4(new THREE.Matrix4().makeRotationX(kind === 'lower' ? -Math.PI / 2 : Math.PI / 2));
@@ -348,6 +385,7 @@ function printOriented(geo, kind) {
   const bb = g.boundingBox;
   // in den positiven Oktanten: Grundfläche auf Z=0, alles bei x,y >= 0 (3MF-konform, kein Slicer-Offset)
   g.translate(-bb.min.x, -bb.min.y, -bb.min.z);
+  orientConsistent(g);   // konsistente Aussen-Wicklung -> 3MF druckt korrekt
   return g;
 }
 function geomPos(geo) { const g = geo.index ? geo.toNonIndexed() : geo; return g.attributes.position.array; }
