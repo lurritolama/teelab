@@ -118,22 +118,34 @@
         <input type="range" id="cubePos" min="0.28" max="0.68" step="0.01" value="0.45" />
       </div>
       <div class="row">
-        <label>Steck-Spiel <span class="val" id="fitVal"></span></label>
-        <input type="range" id="fit" min="0" max="0.3" step="0.02" value="0.04" />
-      </div>
-      <div class="row">
         <label class="check"><input type="checkbox" id="explode" /> Teile getrennt anzeigen</label>
       </div>
     </div>
 
     <div class="group">
-      <h2>Farbe</h2>
-      <div class="swatches" id="swatches"></div>
+      <h2>Farben (nach Höhe)</h2>
+      <div class="row">
+        <label>Anzahl Farben</label>
+        <div class="seg" id="numColors">
+          <button data-v="1" class="active">1</button>
+          <button data-v="2">2</button>
+          <button data-v="3">3</button>
+        </div>
+      </div>
+      <div id="bandRows"></div>
+      <div class="row" id="stop1Row">
+        <label>Grenze 1 <span class="val" id="stop1Val"></span></label>
+        <input type="range" id="stop1" min="0.05" max="0.95" step="0.01" value="0.33" />
+      </div>
+      <div class="row" id="stop2Row">
+        <label>Grenze 2 <span class="val" id="stop2Val"></span></label>
+        <input type="range" id="stop2" min="0.05" max="0.95" step="0.01" value="0.66" />
+      </div>
     </div>
 
     <div class="group">
       <h2>Herunterladen</h2>
-      <p class="testnote">Dein Tee kommt als <b>zwei Teile</b> in einer ZIP: unten Spitze + Würfel (mit Steckloch), oben Cup mit Zapfen — nach dem Druck <b>zusammenstecken & kleben</b>. 3MF empfohlen.</p>
+      <p class="testnote">Dein Tee kommt als <b>zwei Teile</b> in einer ZIP: unten Spitze + Würfel, oben Cup mit Zapfen — nach dem Druck <b>zusammenstecken & kleben</b>. <b>Farben nur im 3MF</b> (STL = nur Form).</p>
       <button class="btn-alt" id="export3mf">3MF herunterladen (2 Teile)</button>
       <button class="btn-alt" id="exportStl">STL herunterladen (2 Teile)</button>
     </div>
@@ -167,7 +179,8 @@ const COLORS = [
 const P = {
   headType: 'cup', length: 70, cupDia: 11, cupDepth: 3,
   shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, cubeSize: 9, cubePos: 0.45,
-  fit: 0.04, explode: false, color: COLORS[5][1],
+  explode: false,
+  numColors: 1, bandColors: ['#37a24a', '#2f6fd6', '#eceff0'], stop1: 0.33, stop2: 0.66,
 };
 
 // ---------- Scene ----------
@@ -195,7 +208,7 @@ scene.add(new THREE.GridHelper(160, 16, 0x2d3a32, 0x1c2620));
 
 let lowerMesh = null, upperMesh = null, currentParts = { lower: null, upper: null };
 // DoubleSide: Slicing nutzt die Geometrie, nicht die Normalen -> Wicklung egal, Rendern bleibt korrekt.
-const material = new THREE.MeshStandardMaterial({ color: P.color, roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
+const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
 
 // ---------- Signed volume (mm^3) ----------
 function signedVolume(geo) {
@@ -248,7 +261,7 @@ function buildTee() {
   const sockHalf = Math.max(1.4, Math.min(half - 1, s * 0.25));   // Steckloch (halbe Kantenlänge)
   const sockD = Math.min(s * 0.45, 6);                            // Lochtiefe
   const scr = Math.min(0.18, 0.6 / sockHalf);                     // kleine Fase an Loch/Zapfen
-  const clr = P.fit, pegHalf = Math.max(0.8, sockHalf - clr);     // Zapfen mit einstellbarem Passungsspiel
+  const clr = 0.04, pegHalf = Math.max(0.8, sockHalf - clr);      // Zapfen mit bewährtem Passungsspiel 0.04
   const pegLen = Math.max(1.2, sockD - 1.0);                      // Steck-Länge (mit Bodenspiel)
   const shaftRad = (y) => { const t = Math.max(0, Math.min(1, (y - tipH) / (headBaseY - tipH)));
     if (P.shaftProfile === 'taper') return rs * (0.8 + 0.35 * t);
@@ -259,7 +272,7 @@ function buildTee() {
   const Lo = TeeMesh();
   let prev = ringC(tipH, rs * 0.98);
   Lo.fan(prev, [0, 0, 0]);                                        // Spitze
-  const nSh = Math.max(4, Math.round((cubeBottom - tipH) / 4));
+  const nSh = Math.max(6, Math.round((cubeBottom - tipH) / 1.8));   // dichter für weiche Farbübergänge
   for (let i = 1; i <= nSh; i++) { const y = tipH + (cubeBottom - tipH) * (i / nSh); const r = ringC(y, shaftRad(y)); Lo.strip(prev, r); prev = r; }
   const sBotIn = ringS(cubeBottom, half - cham, vcr);
   Lo.strip(prev, sBotIn);                                         // flacher Boden-Kranz Schaft->Würfelkante
@@ -284,7 +297,7 @@ function buildTee() {
   const shBot = ringC(cubeTop, shaftRad(cubeTop));
   Up.strip(pTop, shBot);                                          // Kranz Zapfen -> Schaftunterkante
   prev = shBot;
-  const nSh2 = Math.max(4, Math.round((headBaseY - cubeTop) / 4));
+  const nSh2 = Math.max(6, Math.round((headBaseY - cubeTop) / 1.8));   // dichter für weiche Farbübergänge
   for (let i = 1; i <= nSh2; i++) { const y = cubeTop + (headBaseY - cubeTop) * (i / nSh2); const r = ringC(y, shaftRad(y)); Up.strip(prev, r); prev = r; }
   if (P.headType === 'cup') {
     const rimY = headTopY;
@@ -307,9 +320,37 @@ function buildTee() {
   return { lower, upper };
 }
 
+// ---------- Farb-Bänder nach Höhe (f: 0 = Spitze, 1 = Cup-Oberkante) ----------
+function bandIndexFor(f) {
+  if (P.numColors <= 1) return 0;
+  if (P.numColors === 2) return f < P.stop1 ? 0 : 1;
+  const lo = Math.min(P.stop1, P.stop2), hi = Math.max(P.stop1, P.stop2);
+  return f < lo ? 0 : (f < hi ? 1 : 2);
+}
+// setzt Vertex-Farbe (Vorschau) + Band-Index (Export) je Höhe
+function applyBandColors(geo) {
+  const pos = geo.attributes.position.array, n = pos.length / 3;
+  const col = new Float32Array(pos.length), bi = new Float32Array(n);
+  const c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const f = Math.max(0, Math.min(1, pos[i*3 + 1] / P.length));
+    const idx = bandIndexFor(f); bi[i] = idx;
+    c.set(P.bandColors[idx]);
+    col[i*3] = c.r; col[i*3+1] = c.g; col[i*3+2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('bandIdx', new THREE.BufferAttribute(bi, 1));
+}
+// nur Farben neu setzen (ohne Geometrie-Neubau) für Farb-/Grenzen-Regler
+function recolor() {
+  if (currentParts.lower) applyBandColors(currentParts.lower);
+  if (currentParts.upper) applyBandColors(currentParts.upper);
+}
+
 function rebuild() {
  try {
   const { lower, upper } = buildTee();
+  applyBandColors(lower); applyBandColors(upper);
   currentParts = { lower, upper };
 
   if (lowerMesh) { scene.remove(lowerMesh); lowerMesh.geometry.dispose(); }
@@ -317,7 +358,6 @@ function rebuild() {
   lowerMesh = new THREE.Mesh(lower, material); scene.add(lowerMesh);
   upperMesh = new THREE.Mesh(upper, material); scene.add(upperMesh);
   upperMesh.position.y = P.explode ? 18 : 0;
-  material.color.set(P.color);
 
   const triCount = g => g.attributes.position.count / 3;
   updateStats(triCount(lower) + triCount(upper), signedVolume(lower) + signedVolume(upper));
@@ -418,24 +458,29 @@ function make3mfBlob(geo) {
   // sondern vertrauen den Indizes. Also Vertices deduplizieren und Dreiecke auf gemeinsame
   // Indizes zeigen lassen — sonst ist jedes Dreieck lose und der Slicer sieht offenes Chaos.
   const p = geomPos(geo);
-  const map = new Map(), verts = [], idx = [];
+  const bAttr = geo.attributes.bandIdx;   // Band pro Vertex (überlebt printOriented)
+  const map = new Map(), verts = [], idx = [], vBand = [];
   for (let i = 0; i < p.length; i += 3) {
     const x = p[i].toFixed(4), y = p[i+1].toFixed(4), z = p[i+2].toFixed(4);
     const k = x + ',' + y + ',' + z;
     let id = map.get(k);
-    if (id === undefined) { id = verts.length; verts.push(`<vertex x="${x}" y="${y}" z="${z}"/>`); map.set(k, id); }
+    if (id === undefined) { id = verts.length; verts.push(`<vertex x="${x}" y="${y}" z="${z}"/>`); map.set(k, id); vBand[id] = bAttr ? Math.round(bAttr.array[i/3]) : 0; }
     idx.push(id);
   }
+  const palette = P.bandColors.slice(0, Math.max(1, P.numColors));
   let vertsXml = verts.join(''), tris = '';
   for (let t = 0; t < idx.length; t += 3) {
     const a = idx[t], b = idx[t+1], c = idx[t+2];
     if (a === b || b === c || a === c) continue;   // nach dem Verschweissen kollabierte Dreiecke überspringen
-    tris += `<triangle v1="${a}" v2="${b}" v3="${c}"/>`;
+    const bi = Math.min(palette.length - 1, vBand[a] || 0);
+    tris += `<triangle v1="${a}" v2="${b}" v3="${c}" p1="${bi}"/>`;
   }
+  // 3MF-Material-Erweiterung (optional -> Slicer ohne Support ignorieren die Farbe, Geometrie bleibt gültig)
+  const colorGroup = `<m:colorgroup id="2">${palette.map(h => `<m:color color="${h.toUpperCase()}FF"/>`).join('')}</m:colorgroup>`;
   const model = `<?xml version="1.0" encoding="UTF-8"?>
-<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">
  <metadata name="Application">TeeLab Konfigurator</metadata>
- <resources><object id="1" type="model"><mesh>
+ <resources>${colorGroup}<object id="1" type="model" pid="2" pindex="0"><mesh>
    <vertices>${vertsXml}</vertices><triangles>${tris}</triangles>
  </mesh></object></resources>
  <build><item objectid="1"/></build>
@@ -467,18 +512,21 @@ const fmt = {
   tipVal: () => P.tipSharp < .33 ? 'stumpf' : P.tipSharp > .66 ? 'scharf' : 'mittel',
   cubeSizeVal: () => P.cubeSize.toFixed(1) + ' mm',
   cubePosVal: () => Math.round(P.cubePos * P.length) + ' mm',
-  fitVal: () => P.fit.toFixed(2) + ' mm/Seite',
+  stop1Val: () => Math.round(P.stop1 * P.length) + ' mm',
+  stop2Val: () => Math.round(P.stop2 * P.length) + ' mm',
 };
 function refreshLabels() {
   for (const k in fmt) { const el = $(k); if (el) el.textContent = fmt[k](); }
   $('shaftWarn').classList.toggle('show', P.shaftDia < 4);
   $('cupDiaRow').classList.toggle('disabled', P.headType === 'flat');
   $('cupDepthRow').classList.toggle('disabled', P.headType !== 'cup');
+  $('stop1Row').style.display = P.numColors >= 2 ? '' : 'none';
+  $('stop2Row').style.display = P.numColors >= 3 ? '' : 'none';
 }
 function bindRange(id, key, isFloat = true) {
   $(id).addEventListener('input', e => { P[key] = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value); refreshLabels(); rebuild(); });
 }
-['cupDia','cupDepth','shaftDia','tipSharp','cubeSize','cubePos','fit'].forEach(k => bindRange(k, k));
+['cupDia','cupDepth','shaftDia','tipSharp','cubeSize','cubePos'].forEach(k => bindRange(k, k));
 bindRange('length', 'length', false);
 function bindSeg(id, key) {
   $(id).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
@@ -491,17 +539,36 @@ $('lengthPresets').querySelectorAll('button').forEach(b => b.addEventListener('c
   P.length = parseInt(b.dataset.v); $('length').value = P.length; refreshLabels(); rebuild();
 }));
 
-const sw = $('swatches');
-COLORS.forEach(([name, hex]) => {
-  const b = document.createElement('button');
-  b.style.background = hex; b.title = name;
-  if (hex === P.color) b.classList.add('active');
-  b.addEventListener('click', () => {
-    sw.querySelectorAll('button').forEach(x => x.classList.remove('active'));
-    b.classList.add('active'); P.color = hex; material.color.set(hex);
-  });
-  sw.appendChild(b);
-});
+// ----- Farb-Bänder UI -----
+const bandRowsEl = $('bandRows');
+const bandLabel = (i, n) => n === 1 ? 'Ganzes Tee' : (n === 2 ? ['Unten', 'Oben'][i] : ['Unten', 'Mitte', 'Oben'][i]);
+function buildBandRows() {
+  bandRowsEl.innerHTML = '';
+  for (let i = 0; i < P.numColors; i++) {
+    const row = document.createElement('div'); row.className = 'row';
+    const lab = document.createElement('label'); lab.textContent = bandLabel(i, P.numColors); row.appendChild(lab);
+    const swz = document.createElement('div'); swz.className = 'swatches';
+    COLORS.forEach(([name, hex]) => {
+      const b = document.createElement('button'); b.style.background = hex; b.title = name;
+      if (hex === P.bandColors[i]) b.classList.add('active');
+      b.addEventListener('click', () => {
+        P.bandColors[i] = hex;
+        swz.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active'); recolor();
+      });
+      swz.appendChild(b);
+    });
+    row.appendChild(swz); bandRowsEl.appendChild(row);
+  }
+}
+$('numColors').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  $('numColors').querySelectorAll('button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); P.numColors = parseInt(b.dataset.v);
+  buildBandRows(); refreshLabels(); recolor();
+}));
+function bindRecolor(id, key) { $(id).addEventListener('input', e => { P[key] = parseFloat(e.target.value); refreshLabels(); recolor(); }); }
+bindRecolor('stop1', 'stop1'); bindRecolor('stop2', 'stop2');
+buildBandRows();
 
 $('explode').addEventListener('change', e => { P.explode = e.target.checked; if (upperMesh) upperMesh.position.y = P.explode ? 18 : 0; });
 $('reset').addEventListener('click', () => { camera.position.copy(CAM_START); controls.target.copy(TARGET); controls.update(); });
