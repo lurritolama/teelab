@@ -26,5 +26,14 @@ const links = [
   <div class="navlinks">
     {links.map((l) => <a href={l.href}>{l.label}</a>)}
   </div>
-  <a class="cart" href="/warenkorb">WARENKORB · 0</a>
+  <a class="cart" href="/warenkorb">WARENKORB · <span data-korb-anzahl>0</span></a>
 </nav>
+
+<script>
+  import { anzahl } from '../lib/cart.js';
+  const el = document.querySelector('[data-korb-anzahl]');
+  const zeige = () => { if (el) el.textContent = String(anzahl()); };
+  zeige();
+  window.addEventListener('warenkorb:geaendert', zeige);
+  window.addEventListener('storage', zeige);
+</script>

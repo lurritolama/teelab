@@ -2,9 +2,59 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 <BaseLayout title="Warenkorb — TeeLab" description="Dein Warenkorb bei TeeLab.">
-  <div class="coming">
+  <section class="korb">
     <div class="kicker">// Warenkorb</div>
-    <h1>Noch nichts drin</h1>
-    <p>Der Warenkorb und die Kasse sind in Arbeit. Bis dahin: Stöber im <a href="/shop">Shop</a> oder bau dein Tee im <a href="/konfigurator">Konfigurator</a>.</p>
-  </div>
+    <h1>Warenkorb</h1>
+
+    <noscript><p class="korb-note">Der Warenkorb braucht JavaScript. Du kannst uns deine Wünsche auch über das <a href="/kontakt">Kontaktformular</a> schicken.</p></noscript>
+
+    <div data-korb-leer hidden>
+      <p class="korb-note">Noch nichts drin. Stöber im <a href="/shop">Shop</a> oder bau dein Tee im <a href="/konfigurator">Konfigurator</a>.</p>
+    </div>
+
+    <div data-korb-inhalt hidden>
+      <ul class="korb-liste" data-korb-liste></ul>
+      <div class="korb-summe">
+        <div class="korb-summe-zeile"><span>Zwischensumme</span><span data-korb-subtotal></span></div>
+        <p class="korb-hint">Versand wählst du im nächsten Schritt.</p>
+        <a class="btn primary" href="/checkout">Zur Kasse</a>
+      </div>
+    </div>
+  </section>
 </BaseLayout>
+
+<script>
+  import { lesen, setzeMenge, entfernen, subtotalRappen, formatPreis } from '../lib/cart.js';
+  const leer = document.querySelector('[data-korb-leer]');
+  const inhalt = document.querySelector('[data-korb-inhalt]');
+  const liste = document.querySelector('[data-korb-liste]');
+  const sub = document.querySelector('[data-korb-subtotal]');
+
+  function rendern() {
+    if (!leer || !inhalt || !liste || !sub) return;
+    const ps = lesen();
+    leer.hidden = ps.length > 0;
+    inhalt.hidden = ps.length === 0;
+    liste.textContent = '';
+    for (const p of ps) {
+      const li = document.createElement('li');
+      const titel = document.createElement('a');
+      titel.className = 'korb-titel'; titel.href = `/produkt/${p.slug}`; titel.textContent = p.titel;
+      const menge = document.createElement('div'); menge.className = 'korb-menge';
+      const minus = document.createElement('button'); minus.type = 'button'; minus.textContent = '−';
+      minus.onclick = () => { setzeMenge(p.id, p.qty - 1); rendern(); };
+      const zahl = document.createElement('span'); zahl.textContent = String(p.qty);
+      const plus = document.createElement('button'); plus.type = 'button'; plus.textContent = '+';
+      plus.onclick = () => { setzeMenge(p.id, p.qty + 1); rendern(); };
+      menge.append(minus, zahl, plus);
+      const preis = document.createElement('div'); preis.className = 'korb-preis'; preis.textContent = formatPreis(p.preisRappen * p.qty);
+      const raus = document.createElement('button'); raus.type = 'button'; raus.className = 'korb-raus'; raus.textContent = 'Entfernen';
+      raus.onclick = () => { entfernen(p.id); rendern(); };
+      li.append(titel, menge, preis, raus);
+      liste.append(li);
+    }
+    sub.textContent = formatPreis(subtotalRappen());
+  }
+  rendern();
+  window.addEventListener('storage', rendern);
+</script>

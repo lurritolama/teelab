@@ -1,0 +1,102 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Kasse — TeeLab" description="Bestellung abschliessen bei TeeLab.">
+  <section class="checkout">
+    <div class="kicker">// Kasse</div>
+    <h1>Bestellung abschliessen</h1>
+
+    <div data-checkout-leer hidden class="korb-note">
+      Dein Warenkorb ist leer. <a href="/shop">Zurück zum Shop</a>.
+    </div>
+
+    <div class="co-grid" data-checkout-inhalt hidden>
+      <form name="bestellung" method="POST" action="/bestellung/danke" data-netlify="true" netlify-honeypot="bot-field" class="co-form" id="bestellForm">
+        <input type="hidden" name="form-name" value="bestellung" />
+        <p hidden><label>Nicht ausfüllen: <input name="bot-field" /></label></p>
+        <input type="hidden" name="warenkorb" data-warenkorb-feld />
+        <input type="hidden" name="summe" data-summe-feld />
+
+        <h2>Kontakt</h2>
+        <label>E-Mail<input type="email" name="email" required placeholder="dein@mail.ch" /></label>
+        <label>Telefon (optional)<input type="tel" name="telefon" placeholder="079 …" /></label>
+
+        <h2>Lieferadresse</h2>
+        <label>Name<input type="text" name="name" required /></label>
+        <label>Strasse und Hausnummer<input type="text" name="strasse" required /></label>
+        <div class="co-row">
+          <label>PLZ<input type="text" name="plz" required inputmode="numeric" pattern="[0-9]{4}" placeholder="9055" /></label>
+          <label>Ort<input type="text" name="ort" required /></label>
+        </div>
+        <label>Land
+          <select name="land" required>
+            <option value="CH">Schweiz</option>
+            <option value="LI">Liechtenstein</option>
+          </select>
+        </label>
+
+        <h2>Versand</h2>
+        <div class="co-versand" data-versand>
+          <label class="co-opt"><input type="radio" name="versandart" value="b_post" checked /> <span>B-Post <small>2–4 Werktage</small></span><b data-v="700">CHF 7.00</b></label>
+          <label class="co-opt"><input type="radio" name="versandart" value="a_post" /> <span>A-Post <small>nächster Werktag</small></span><b data-v="950">CHF 9.50</b></label>
+          <label class="co-opt"><input type="radio" name="versandart" value="abholung" /> <span>Abholung Bühler AR <small>nach Absprache</small></span><b data-v="0">gratis</b></label>
+        </div>
+
+        <label>Bemerkung (optional)<textarea name="bemerkung" rows="2" placeholder="z. B. Wunschfarbe, Termin …"></textarea></label>
+
+        <p class="co-pay">Bezahlung nach Absprache (Rechnung / TWINT). Wir melden uns nach Eingang deiner Bestellung.</p>
+        <button type="submit" class="btn primary co-submit">Bestellung abschicken</button>
+      </form>
+
+      <aside class="co-summary">
+        <h2>Deine Bestellung</h2>
+        <ul data-summary-liste></ul>
+        <div class="co-sum-zeile"><span>Zwischensumme</span><span data-sum-subtotal></span></div>
+        <div class="co-sum-zeile"><span>Versand</span><span data-sum-versand></span></div>
+        <div class="co-sum-zeile co-total"><span>Total</span><span data-sum-total></span></div>
+      </aside>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { lesen, subtotalRappen, formatPreis } from '../lib/cart.js';
+  const leer = document.querySelector('[data-checkout-leer]');
+  const inhalt = document.querySelector('[data-checkout-inhalt]');
+  const sumListe = document.querySelector('[data-summary-liste]');
+  const subEl = document.querySelector('[data-sum-subtotal]');
+  const versEl = document.querySelector('[data-sum-versand]');
+  const totEl = document.querySelector('[data-sum-total]');
+  const feldKorb = document.querySelector('[data-warenkorb-feld]');
+  const feldSumme = document.querySelector('[data-summe-feld]');
+  const form = document.getElementById('bestellForm');
+
+  function versandRappen() {
+    const r = document.querySelector('input[name="versandart"]:checked');
+    return r ? Number(r.closest('.co-opt')?.querySelector('b')?.dataset.v || 0) : 0;
+  }
+  function rendern() {
+    const ps = lesen();
+    if (leer) leer.hidden = ps.length > 0;
+    if (inhalt) inhalt.hidden = ps.length === 0;
+    if (ps.length === 0) return;
+    if (sumListe) {
+      sumListe.textContent = '';
+      for (const p of ps) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${p.qty}× ${p.titel}</span><span>${formatPreis(p.preisRappen * p.qty)}</span>`;
+        sumListe.append(li);
+      }
+    }
+    const sub = subtotalRappen(), vers = versandRappen(), tot = sub + vers;
+    if (subEl) subEl.textContent = formatPreis(sub);
+    if (versEl) versEl.textContent = vers === 0 ? 'gratis' : formatPreis(vers);
+    if (totEl) totEl.textContent = formatPreis(tot);
+    if (feldKorb) feldKorb.value = JSON.stringify(ps.map((p) => ({ titel: p.titel, slug: p.slug, qty: p.qty, preisRappen: p.preisRappen })));
+    if (feldSumme) feldSumme.value = `${formatPreis(sub)} + Versand ${vers === 0 ? 'gratis' : formatPreis(vers)} = ${formatPreis(tot)}`;
+  }
+  document.querySelectorAll('input[name="versandart"]').forEach((r) => r.addEventListener('change', rendern));
+  form?.addEventListener('submit', () => rendern());  // Felder vor dem Absenden füllen
+  rendern();
+  window.addEventListener('storage', rendern);
+</script>

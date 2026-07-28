@@ -1,0 +1,16 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Danke — TeeLab" description="Danke für deine Bestellung bei TeeLab.">
+  <div class="coming">
+    <div class="kicker">// Bestellung eingegangen</div>
+    <h1>Danke!</h1>
+    <p>Deine Bestellung ist bei uns eingegangen. Wir melden uns per E-Mail für die Zahlung (Rechnung / TWINT) und den Versand. Du bekommst eine Bestätigung an die angegebene Adresse.</p>
+    <p style="margin-top:22px"><a class="btn ghost" href="/shop">Weiter stöbern</a></p>
+  </div>
+</BaseLayout>
+
+<script>
+  import { leeren } from '../../lib/cart.js';
+  leeren();   // Bestellung ist raus -> Warenkorb leeren
+</script>

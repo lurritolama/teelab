@@ -26,9 +26,19 @@ const p = bySlug(slug);
       <div class="price">{p.price} · {p.unit}</div>
       <p class="desc">{p.desc}</p>
       <div class="cta">
-        <a class="btn primary" href="/warenkorb">In den Warenkorb</a>
+        <button class="btn primary" id="addToCart" data-id={p.id} data-slug={p.slug} data-titel={p.name} data-preis={p.priceRappen}>In den Warenkorb</button>
         <a class="btn ghost" href="/konfigurator">Selbst gestalten</a>
       </div>
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  import { hinzufuegen } from '../../lib/cart.js';
+  const b = document.getElementById('addToCart');
+  b?.addEventListener('click', () => {
+    hinzufuegen({ id: b.dataset.id, slug: b.dataset.slug, titel: b.dataset.titel, preisRappen: Number(b.dataset.preis) });
+    const alt = b.textContent; b.textContent = '✓ Hinzugefügt';
+    setTimeout(() => { b.textContent = alt; }, 1400);
+  });
+</script>
