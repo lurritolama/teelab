@@ -118,6 +118,10 @@
         <input type="range" id="cubePos" min="0.28" max="0.68" step="0.01" value="0.45" />
       </div>
       <div class="row">
+        <label>Steck-Spiel <span class="val" id="fitVal"></span></label>
+        <input type="range" id="fit" min="0" max="0.3" step="0.02" value="0.1" />
+      </div>
+      <div class="row">
         <label class="check"><input type="checkbox" id="explode" /> Teile getrennt anzeigen</label>
       </div>
     </div>
@@ -163,7 +167,7 @@ const COLORS = [
 const P = {
   headType: 'cup', length: 70, cupDia: 11, cupDepth: 3,
   shaftDia: 5, shaftProfile: 'straight', tipSharp: 0.5, cubeSize: 9, cubePos: 0.45,
-  explode: false, color: COLORS[5][1],
+  fit: 0.1, explode: false, color: COLORS[5][1],
 };
 
 // ---------- Scene ----------
@@ -244,7 +248,7 @@ function buildTee() {
   const sockHalf = Math.max(1.4, Math.min(half - 1, s * 0.25));   // Steckloch (halbe Kantenlänge)
   const sockD = Math.min(s * 0.45, 6);                            // Lochtiefe
   const scr = Math.min(0.18, 0.6 / sockHalf);                     // kleine Fase an Loch/Zapfen
-  const clr = 0.25, pegHalf = Math.max(0.8, sockHalf - clr);      // Zapfen mit Passungsspiel
+  const clr = P.fit, pegHalf = Math.max(0.8, sockHalf - clr);     // Zapfen mit einstellbarem Passungsspiel
   const pegLen = Math.max(1.2, sockD - 1.0);                      // Steck-Länge (mit Bodenspiel)
   const shaftRad = (y) => { const t = Math.max(0, Math.min(1, (y - tipH) / (headBaseY - tipH)));
     if (P.shaftProfile === 'taper') return rs * (0.8 + 0.35 * t);
@@ -284,10 +288,13 @@ function buildTee() {
   for (let i = 1; i <= nSh2; i++) { const y = cubeTop + (headBaseY - cubeTop) * (i / nSh2); const r = ringC(y, shaftRad(y)); Up.strip(prev, r); prev = r; }
   if (P.headType === 'cup') {
     const rimY = headTopY;
-    const flare = ringC(headBaseY + (rimY - headBaseY) * 0.35, rCup * 0.55); Up.strip(prev, flare); prev = flare;
-    const rim = ringC(rimY - P.cupDepth * 0.15, rCup); Up.strip(prev, rim); prev = rim;
-    for (let i = 1; i <= 12; i++) { const a = i / 14; const r = ringC(rimY - P.cupDepth * Math.sin(a * Math.PI * 0.5), rCup * Math.cos(a * Math.PI * 0.5)); Up.strip(prev, r); prev = r; }
-    Up.fan(prev, [0, rimY - P.cupDepth, 0]);                      // Cup-Mulde (Kegel bis Zentrum, kein Null-Ring)
+    const rimWall = Math.max(1.5, rCup * 0.3);                    // dicke, druckbare Auflage-Randbreite
+    const rBowl = Math.max(1.4, rCup - rimWall);                  // Mulden-Öffnungsradius
+    const flare = ringC(headBaseY + (rimY - headBaseY) * 0.4, (rs + rCup) * 0.5); Up.strip(prev, flare); prev = flare;
+    const rimOut = ringC(rimY, rCup); Up.strip(prev, rimOut); prev = rimOut;      // Außenkante oben
+    const rimIn = ringC(rimY, rBowl); Up.strip(prev, rimIn); prev = rimIn;        // FLACHER, dicker Rand -> Muldenöffnung
+    for (let i = 1; i <= 12; i++) { const a = i / 14; const r = ringC(rimY - P.cupDepth * Math.sin(a * Math.PI * 0.5), rBowl * Math.cos(a * Math.PI * 0.5)); Up.strip(prev, r); prev = r; }
+    Up.fan(prev, [0, rimY - P.cupDepth, 0]);                      // Mulde bis Zentrum
   } else {
     const rFlat = Math.max(rCup * 0.75, rs + 1.2);
     const f1 = ringC(headBaseY + 1.0, rFlat); Up.strip(prev, f1);
@@ -407,6 +414,7 @@ const fmt = {
   tipVal: () => P.tipSharp < .33 ? 'stumpf' : P.tipSharp > .66 ? 'scharf' : 'mittel',
   cubeSizeVal: () => P.cubeSize.toFixed(1) + ' mm',
   cubePosVal: () => Math.round(P.cubePos * P.length) + ' mm',
+  fitVal: () => P.fit.toFixed(2) + ' mm/Seite',
 };
 function refreshLabels() {
   for (const k in fmt) { const el = $(k); if (el) el.textContent = fmt[k](); }
@@ -417,7 +425,7 @@ function refreshLabels() {
 function bindRange(id, key, isFloat = true) {
   $(id).addEventListener('input', e => { P[key] = isFloat ? parseFloat(e.target.value) : parseInt(e.target.value); refreshLabels(); rebuild(); });
 }
-['cupDia','cupDepth','shaftDia','tipSharp','cubeSize','cubePos'].forEach(k => bindRange(k, k));
+['cupDia','cupDepth','shaftDia','tipSharp','cubeSize','cubePos','fit'].forEach(k => bindRange(k, k));
 bindRange('length', 'length', false);
 function bindSeg(id, key) {
   $(id).querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
