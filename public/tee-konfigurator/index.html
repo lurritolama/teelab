@@ -304,12 +304,27 @@ function buildTee() {
   if (cupLike) {
     const rimY = headTopY;
     const rimWall = Math.max(1.5, rCup * 0.3);                    // dicke, druckbare Auflage-Randbreite
-    const rBowl = Math.max(1.4, rCup - rimWall);                  // Mulden-Öffnungsradius
-    const flare = ringC(headBaseY + (rimY - headBaseY) * 0.4, (rs + rCup) * 0.5); Up.strip(prev, flare); prev = flare;
-    const rimOut = ringC(rimY, rCup); Up.strip(prev, rimOut); prev = rimOut;      // Außenkante oben
-    const rimIn = ringC(rimY, rBowl); Up.strip(prev, rimIn); prev = rimIn;        // FLACHER, dicker Rand -> Muldenöffnung
+    const rBowl = Math.max(1.4, rCup - rimWall);                  // runde Mulden-Öffnung (Ball-Auflage bleibt IMMER rund)
+    if (P.headType === 'eye') {
+      // ---- Augenform: mandelförmiger Umriss aussen (breiter als hoch, spitze Ecken), runde Mulde innen ----
+      const ah = Math.max(rCup * 0.95, rBowl + 0.9), aw = ah * 1.6;   // Halb-Höhe / Halb-Breite
+      const cy = (ah*ah - aw*aw) / (2*ah), R = Math.hypot(aw, cy);
+      const eyeR = (c, s) => { const disc = Math.sqrt(Math.max(1e-9, R*R - cy*cy*c*c)); return (s >= 0 ? cy : -cy) * s + disc; };
+      const nFl = 5;
+      for (let i = 1; i <= nFl; i++) {                             // Flare morpht Kreis(Schaft) -> Auge(Rand)
+        const t = i / nFl, y = headBaseY + (rimY - headBaseY) * t, baseR = rs + (rCup - rs) * t;
+        const ring = CIRCLE.map(u => { const c = u[0], s = u[1], r = baseR * (1 - t) + eyeR(c, s) * t; return [c * r, y, s * r]; });
+        Up.strip(prev, ring); prev = ring;
+      }
+      const rimIn = ringC(rimY, rBowl); Up.strip(prev, rimIn); prev = rimIn;   // flacher Augen-Rand (Auge->runde Mulde)
+    } else {
+      const flare = ringC(headBaseY + (rimY - headBaseY) * 0.4, (rs + rCup) * 0.5); Up.strip(prev, flare); prev = flare;
+      const rimOut = ringC(rimY, rCup); Up.strip(prev, rimOut); prev = rimOut;
+      const rimIn = ringC(rimY, rBowl); Up.strip(prev, rimIn); prev = rimIn;
+    }
+    // runde Mulde (Ball-Auflage) + Boden — für Cup UND Auge identisch (Ball hält rund)
     for (let i = 1; i <= 12; i++) { const a = i / 14; const r = ringC(rimY - P.cupDepth * Math.sin(a * Math.PI * 0.5), rBowl * Math.cos(a * Math.PI * 0.5)); Up.strip(prev, r); prev = r; }
-    Up.fan(prev, [0, rimY - P.cupDepth, 0]);                      // Mulde bis Zentrum
+    Up.fan(prev, [0, rimY - P.cupDepth, 0]);
   } else {
     const rFlat = Math.max(rCup * 0.75, rs + 1.2);
     const f1 = ringC(headBaseY + 1.0, rFlat); Up.strip(prev, f1);
@@ -336,13 +351,15 @@ function applyBandColors(geo) {
   const c = new THREE.Color();
   const eye = P.headType === 'eye';
   const rc = P.cupDia / 2;
+  const rBowlE = Math.max(1.4, rc - Math.max(1.5, rc * 0.3));     // runde Mulde = Iris-Fläche
+  const eyeR0 = rBowlE * 0.40, eyeR1 = rBowlE * 1.02;             // Pupille / Iris-Grenzen
   const cupBaseY = P.length - Math.max(P.cupDia * 0.35, P.cupDepth + 2);
   for (let i = 0; i < n; i++) {
     const x = pos[i*3], y = pos[i*3 + 1], z = pos[i*3 + 2];
     let idx;
     if (eye) {
-      // Auge: Cup konzentrisch (0=Pupille schwarz, 1=Iris, 2=Weiss), Rest darunter = Weiss(2)
-      if (y >= cupBaseY - 0.01) { const r = Math.hypot(x, z); idx = r < rc * 0.30 ? 0 : (r < rc * 0.64 ? 1 : 2); }
+      // Auge: runde Mulde = Iris/Pupille (0=Pupille schwarz Mitte, 1=Iris blau), alles ausserhalb = Weiss(2, mandelförmig)
+      if (y >= cupBaseY - 0.01) { const r = Math.hypot(x, z); idx = r < eyeR0 ? 0 : (r < eyeR1 ? 1 : 2); }
       else idx = 2;
     } else {
       idx = bandIndexFor(Math.max(0, Math.min(1, y / P.length)));
